@@ -35,7 +35,11 @@ function Run-RikeScenario([string]$Name,[string[]]$Answers,[string]$KeyRoot,[boo
     Copy-Item (Join-Path $PSScriptRoot 'RikeLocalTool.java') (Join-Path $rikeCase 'RikeLocalTool.java')
     $rikeScript=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'sign-release.ps1'))
     $rikeActualInputHash=(Get-FileHash $Apk -Algorithm SHA256).Hash.ToLowerInvariant()
-    $rikeScript=$rikeScript -replace "(?m)^\`$rikeInputHash = '[^']+'$", ("`$rikeInputHash = '"+$rikeActualInputHash+"'")
+    $rikeHashPattern='(?m)^\$rikeInputHash = ''[^'']+''\r?$'
+    if ([regex]::Matches($rikeScript,$rikeHashPattern).Count -ne 1) {
+        throw 'Synthetic signing test requires exactly one APK hash assignment.'
+    }
+    $rikeScript=$rikeScript -replace $rikeHashPattern, ("`$rikeInputHash = '"+$rikeActualInputHash+"'")
     $rikeScript=$rikeScript -replace 'Source build: [0-9a-zA-Z_]+', ('Source build: '+$env:GITHUB_SHA)
 
     $rikeScriptPath=Join-Path $rikeCase 'sign-release.ps1'
