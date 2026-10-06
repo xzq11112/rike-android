@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'app.rike.offline'
+    compileSdk 35
+    buildFeatures { buildConfig true }
+    defaultConfig { applicationId 'app.rike.offline'; minSdk 26; targetSdk 35; versionCode 17; versionName '0.6.4'; resValue 'string', 'app_name', '日课' }
+    buildTypes {
+        debug { applicationIdSuffix '.preview.audit'; versionNameSuffix '-test'; resValue 'string', 'app_name', '日课 · 审查测试' }
+        release { minifyEnabled false }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
+            ['https.proxyHost','https.proxyPort','http.proxyHost','http.proxyPort'].each { key ->
+                if (System.getProperty(key)) systemProperty key, System.getProperty(key)
+            }
+        }
+    }
+    packaging { resources.excludes += ['META-INF/versions/**', 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'] }
+}
+dependencies {
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.83'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}

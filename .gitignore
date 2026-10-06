@@ -1,0 +1,24 @@
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.apk
+*.rike
+*.json
+release-windows/output/
+
+# Additional protection beyond the existing Android .gitignore.
+# *.jks, *.keystore, *.p12, *.pfx, *.apk, *.rike and *.json are already ignored.
+.env*
+!.env.example
+.dev.vars*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+RikeRelease/
+/exports/
+/backups/

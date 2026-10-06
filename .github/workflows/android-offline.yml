@@ -1,0 +1,90 @@
+name: Android build and validation
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install verified Android command-line tools and SDK
+        run: |
+          rike_sdk_dir="$RUNNER_TEMP/rike-android-sdk"
+          mkdir -p "$rike_sdk_dir/cmdline-tools" "$RUNNER_TEMP/rike-sdk-unpack"
+          curl --fail --location --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip --output "$RUNNER_TEMP/rike-sdk.zip"
+          echo "7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee  $RUNNER_TEMP/rike-sdk.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/rike-sdk.zip" -d "$RUNNER_TEMP/rike-sdk-unpack"
+          mv "$RUNNER_TEMP/rike-sdk-unpack/cmdline-tools" "$rike_sdk_dir/cmdline-tools/latest"
+          (yes || true) | "$rike_sdk_dir/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$rike_sdk_dir" --licenses
+          "$rike_sdk_dir/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$rike_sdk_dir" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$rike_sdk_dir" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$rike_sdk_dir" >> "$GITHUB_ENV"
+      - name: Test and build (no production signing keys)
+        run: ./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
+      - name: Check no Internet permission in final release
+        run: |
+          permissions="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions app/build/outputs/apk/release/app-release-unsigned.apk)"
+          if [[ "$permissions" == *android.permission.INTERNET* ]]; then exit 1; fi
+          metadata="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/release/app-release-unsigned.apk)"
+          if [[ "$metadata" == *application-debuggable* ]]; then exit 1; fi
+      - name: Preserve synthetic test and lint reports even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-android-validation
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-release.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-android-preview-NOT-FOR-PRIVATE-DATA
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Provide SDK signing tool for private local preview signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-android-local-signing-tool
+          retention-days: 14
+          path: ${{ env.ANDROID_HOME }}/build-tools/35.0.0/lib/apksigner.jar
+
+  windows-signing:
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: offline-android-preview-NOT-FOR-PRIVATE-DATA
+          path: windows-apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: offline-android-local-signing-tool
+          path: windows-signer
+      - name: Synthetic signing acceptance on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $apk = (Get-ChildItem windows-apk -Filter app-release-unsigned.apk -Recurse | Select-Object -First 1).FullName
+          $signer = (Get-ChildItem windows-signer -Filter apksigner.jar -Recurse | Select-Object -First 1).FullName
+          & ./release-windows/test-signing.ps1 -Apk $apk -Signer $signer

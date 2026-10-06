@@ -1,2 +1,34 @@
-# rike-android
-日课 Android：离线练习打卡、感悟日记与时长统计，本机加密存储。AGPLv3。
+# 日课 Android
+
+离线的练习打卡、感悟日记与时长统计工具。当前版本 **0.6.4 / versionCode 17**，最低 Android 8/API 26。本仓库只公开原生 Android 应用，网页版保持私有，不在公开范围内。
+
+- 练习类型和常用时长由使用者添加，类型可长按后原地拖动排序。
+- 记录按日期分组，感悟在同页编辑、展开、修改或删除；历史默认最近七个自然日，可查询任意日期。
+- 四项时长统计、月热力图、可选年份的年热力图，日间与夜间主题。
+- 设置内提供加密备份、验证、恢复，以及兼容的旧资料导入。
+
+## 数据与隐私
+
+资料保存在手机本机，使用 Argon2id 与 AES-GCM 加密；应用无 `INTERNET` 权限，不提供云端同步或遥测。主密码、离线恢复密钥及符合要求的系统生物识别用于解锁。忘记主密码时需要自己保管的恢复密钥；清除应用数据或卸载后，需要自行导出、验证的备份恢复。
+
+安全边界见 [SECURITY.md](./SECURITY.md)。实现尚未完成独立安全审计；硬件生物识别、输入法与正式覆盖安装还需要对应设备验收。
+
+## 构建与维护
+
+使用 **JDK 17、Android SDK 35、Build Tools 35.0.0、Gradle 8.11.1、AGP 8.9.2**。在仓库根目录执行：
+
+```bash
+./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintRelease :app:assembleDebug :app:assembleRelease
+```
+
+Windows 使用同参数的 `gradlew.bat`。完整步骤见 [BUILDING.md](./BUILDING.md)，更新记录和已执行检查见 [CHANGELOG.md](./CHANGELOG.md) 与 [VALIDATION.md](./VALIDATION.md)。
+
+仓库和 fork 不含原作者的生产签名私钥或保护密码。独立发行由发布者在自己的电脑持有密钥，使用新签名不能直接覆盖已经安装的原作者版本；建议独立发行使用自己的应用包名。更新与迁移说明见 [Windows 本机签名流程](./release-windows/README.md)。使用者安装发布者已签好的 APK，无需获得私钥。
+
+报告问题时请提供版本、复现步骤和虚构测试资料。不要提交真实日记、备份、资料库密码、恢复密钥、签名私钥或保护密码。
+
+## 许可证
+
+本仓库的原创代码与原创文档采用 **GNU Affero General Public License v3.0，仅此版本（AGPL-3.0-only）**，许可全文见 [LICENSE](./LICENSE)。允许使用、修改、分发和商用。分发修改版时，须按该许可提供完整对应源码并保留许可声明；修改版如果支持通过网络远程交互，还须向所有远程使用者显著提供免费获取对应源码的方式。仅供自己使用、没有分发或远程使用者的修改，无需公开。
+
+网页版不属于本仓库的授权范围。第三方组件继续使用各自的许可证，见 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)。
