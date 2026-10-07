@@ -1069,7 +1069,12 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                         ||!edited.optString("practiceTypeName").equals(old.optString("practiceTypeName"))
                         ||!minutes.getText().toString().equals(old.optString("durationMinutes"))
                         ||!note.getText().toString().equals(Records.checkInNote(old));
-                    if(changed)confirm("放弃练习修改？","尚未保存的修改将丢失，原练习记录保持不变。",()->super.cancel());
+                    if(changed){
+                        AlertDialog confirmation=new AlertDialog.Builder(dialogContext()).setTitle("放弃练习修改？")
+                            .setMessage("尚未保存的修改将丢失，原练习记录保持不变。")
+                            .setNegativeButton("继续编辑",null).setPositiveButton("放弃修改",(x,w)->super.cancel()).create();
+                        dialog(confirmation);
+                    }
                     else super.cancel();
                 }
             };

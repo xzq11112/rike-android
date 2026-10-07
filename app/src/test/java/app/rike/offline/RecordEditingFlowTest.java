@@ -51,6 +51,18 @@ public class RecordEditingFlowTest {
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
         try{open(a,data());AlertDialog d=edit(a);fields(d).get(0).setText("30");fields(d).get(0).setText("20");d.cancel();assertFalse(d.isShowing());}finally{c.pause().stop().destroy();}
     }
+    @Test public void failedSaveKeepsInputAndCancellationProtectionForRetry()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        try{
+            open(a,data());VaultStore original=new VaultStore(a);byte[] before=original.read();
+            VaultStore failing=new VaultStore(a){@Override public void write(byte[] bytes)throws java.io.IOException{throw new java.io.IOException("synthetic failure");}};
+            set(a,"store",failing);AlertDialog d=edit(a);fields(d).get(1).setText("SYNTHETIC-RETRY");d.getButton(-1).performClick();TestWork.drain(a);
+            assertTrue(d.isShowing());assertEquals("SYNTHETIC-RETRY",fields(d).get(1).getText().toString());assertArrayEquals(before,original.read());
+            d.getButton(-2).performClick();AlertDialog confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);confirm.getButton(-2).performClick();
+            set(a,"store",original);d.getButton(-1).performClick();TestWork.drain(a);assertFalse(d.isShowing());
+            assertEquals("SYNTHETIC-RETRY",Records.find((JSONObject)TestWork.get(a,"data"),"checkIn","entry").getString("note"));
+        }finally{c.pause().stop().destroy();}
+    }
     @Test public void editingDateOutsideRecentRangeKeepsSavedRecordVisible()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
         try{
