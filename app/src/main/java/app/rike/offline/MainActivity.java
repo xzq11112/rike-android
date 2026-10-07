@@ -845,7 +845,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 try{Records.date(date[0]);}catch(IllegalArgumentException e){saved("请通过补记日期重新选择有效日期。");return;}
                 if(note.length()>50000){note.setError("备注最多 50000 个字符。");return;}
                 JSONObject r=object("id",Records.id(),"practiceTypeId",type[0],"practiceTypeName",t.getString("name"),"practiceDate",date[0],"note",note.getText().toString()).put("durationMinutes",minutes);
-                changeAsync(n->{r.put("createdAt",Records.now());Records.upsert(n,"checkIn",r);n.getJSONObject("drafts").remove("checkIn");},()->{managedEntity=null;saved("今日一课，已记下");scrollOffsets[0]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);showApp();});
+                String savedDay=date[0];
+                changeAsync(n->{r.put("createdAt",Records.now());Records.upsert(n,"checkIn",r);n.getJSONObject("drafts").remove("checkIn");},()->{managedEntity=null;saved(savedDay.equals(todayDate().toString())?"今日一课，已记下":"练习已补记 · "+savedDay);scrollOffsets[0]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);showApp();});
             }catch(Exception e){fail(e);}
         });compactOption(submit);submit.setMinWidth(dp(128));submit.setContentDescription("保存练习");selected(submit,true);
     }
@@ -972,7 +973,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 LinearLayout line=row(card);line.setGravity(Gravity.CENTER_VERTICAL);LinearLayout body=column();line.addView(body,new LinearLayout.LayoutParams(0,-2,1));text(body,r.optString("practiceTypeName"),16);
                 if(Records.find(data,"practiceType",r.optString("practiceTypeId"))==null)text(body,"历史类型",11);
                 String note=Records.checkInNote(r);if(!note.isEmpty())text(body,note,14);
-                text(line,r.optInt("durationMinutes")+" 分钟",14);headerIcon(line,ZenIcon.DELETE,"删除打卡记录",()->remove("checkIn",r.optString("id")));
+                text(line,r.optInt("durationMinutes")+" 分钟",14);headerIcon(line,ZenIcon.EDIT,"编辑这次练习",()->editCheckIn(r));headerIcon(line,ZenIcon.DELETE,"删除打卡记录",()->remove("checkIn",r.optString("id")));
             }
         }
         if(rows.isEmpty())text(page,"这段时间尚无练习记录。",16);
@@ -1010,7 +1011,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(rows.size()>PAGE_SIZE)pageControls(rows.size(),journalPage,n->{journalPage=n;showApp();});
     }
     private void journalEditor()throws Exception{
-        LinearLayout editor=recordCard();text(editor,"写下今日所得",20);
+        LinearLayout editor=recordCard();text(editor,journalDate.equals(todayDate().toString())?"写下今日所得":"记录这一天的所得",20);
         JSONObject current=Records.journal(data,journalDate);String key="journal:"+journalDate;JSONObject d=draft(key);
         Button date=button(editor,journalDate+" ▾",()->chooseDay(journalDate,indexMarks(true),"感悟",chosen->openJournal(chosen.toString())));date.setContentDescription("选择感悟日期");
         Button discard=button(editor,"放弃未提交修改",()->discardJournalDraft(journalDate));discard.setVisibility(writer().journalDraftDays().contains(journalDate)?View.VISIBLE:View.GONE);
@@ -1060,7 +1061,22 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             EditText minutes=field(form,"时长（分钟）",old.optString("durationMinutes"),false,false);minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
             EditText note=field(form,"备注（可选）",Records.checkInNote(old),true,false);
             ScrollView scroll=new ScrollView(this);scroll.setSaveEnabled(false);scroll.addView(form);
-            AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("编辑练习").setView(scroll).setNegativeButton("取消",null).setPositiveButton("保存修改",null).create();dialog(d);
+            AlertDialog d=new AlertDialog(dialogContext()){
+                @Override public void cancel(){
+                    if(busy||!unlocked())return;
+                    boolean changed=!selectedDay[0].equals(old.optString("practiceDate"))
+                        ||!edited.optString("practiceTypeId").equals(old.optString("practiceTypeId"))
+                        ||!edited.optString("practiceTypeName").equals(old.optString("practiceTypeName"))
+                        ||!minutes.getText().toString().equals(old.optString("durationMinutes"))
+                        ||!note.getText().toString().equals(Records.checkInNote(old));
+                    if(changed)confirm("放弃练习修改？","尚未保存的修改将丢失，原练习记录保持不变。",()->super.cancel());
+                    else super.cancel();
+                }
+            };
+            d.setTitle("编辑练习");d.setView(scroll);
+            d.setButton(AlertDialog.BUTTON_NEGATIVE,"取消",(android.content.DialogInterface.OnClickListener)null);
+            d.setButton(AlertDialog.BUTTON_POSITIVE,"保存修改",(android.content.DialogInterface.OnClickListener)null);
+            dialog(d);d.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->d.cancel());
             d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
                 if(busy||!unlocked())return;
                 try{
@@ -1069,7 +1085,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                     edited.put("practiceDate",selectedDay[0]).put("durationMinutes",m).put("note",note.getText().toString());
                     d.setCancelable(false);activeAction=d.getButton(AlertDialog.BUTTON_POSITIVE);
                     changeAsync(n->{edited.put("updatedAt",Records.now());Records.upsert(n,"checkIn",edited);},()->{
-                        d.dismiss();if(historyDate!=null)historyDate=selectedDay[0];historyPage=0;scrollOffsets[1]=0;saved("练习修改已保存");showApp();
+                        d.dismiss();if(historyDate!=null||selectedDay[0].compareTo(todayDate().minusDays(6).toString())<0||selectedDay[0].compareTo(todayDate().toString())>0)historyDate=selectedDay[0];historyPage=0;scrollOffsets[1]=0;saved("练习修改已保存 · "+selectedDay[0]);showApp();
                     },()->{d.setCancelable(true);d.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);});activeAction=null;
                 }catch(Exception e){fail(e);}
             });
