@@ -43,8 +43,8 @@ public class RecordEditingFlowTest {
         try{
             open(a,data());byte[] before=new VaultStore(a).read();AlertDialog d=edit(a);fields(d).get(1).setText("SYNTHETIC-EDIT");
             d.getButton(-2).performClick();AlertDialog confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);assertTrue(d.isShowing());
-            confirm.getButton(-2).performClick();assertTrue(d.isShowing());assertEquals("SYNTHETIC-EDIT",fields(d).get(1).getText().toString());
-            d.cancel();confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);confirm.getButton(-1).performClick();assertFalse(d.isShowing());assertArrayEquals(before,new VaultStore(a).read());
+            confirm.getButton(-2).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertTrue(d.isShowing());assertEquals("SYNTHETIC-EDIT",fields(d).get(1).getText().toString());
+            d.cancel();confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);confirm.getButton(-1).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();assertFalse(d.isShowing());assertArrayEquals(before,new VaultStore(a).read());
         }finally{c.pause().stop().destroy();}
     }
     @Test public void revertingChangesDoesNotRequireConfirmation()throws Exception{
@@ -58,7 +58,7 @@ public class RecordEditingFlowTest {
             VaultStore failing=new VaultStore(a){@Override public void write(byte[] bytes)throws java.io.IOException{throw new java.io.IOException("synthetic failure");}};
             set(a,"store",failing);AlertDialog d=edit(a);fields(d).get(1).setText("SYNTHETIC-RETRY");d.getButton(-1).performClick();TestWork.drain(a);
             assertTrue(d.isShowing());assertEquals("SYNTHETIC-RETRY",fields(d).get(1).getText().toString());assertArrayEquals(before,original.read());
-            d.getButton(-2).performClick();AlertDialog confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);confirm.getButton(-2).performClick();
+            d.getButton(-2).performClick();AlertDialog confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);confirm.getButton(-2).performClick();Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();
             set(a,"store",original);d.getButton(-1).performClick();TestWork.drain(a);assertFalse(d.isShowing());
             assertEquals("SYNTHETIC-RETRY",Records.find((JSONObject)TestWork.get(a,"data"),"checkIn","entry").getString("note"));
         }finally{c.pause().stop().destroy();}
