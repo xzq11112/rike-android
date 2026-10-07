@@ -7,9 +7,7 @@ Set-StrictMode -Version 2
 
 $rikePackage = 'app.rike.offline'
 $rikeVersion = '0.6.5'
-# Packaging TODO: this is the old 0.6.4 input hash. Replace it with the
-# verified 0.6.5 release APK hash before distributing the Windows package.
-$rikeInputHash = '4802137325bebf5144f65b5097186de665096fcb54520bce6468ad5e17e47f29'
+$rikeInputHash = 'f311e3b770412803347f189abe6a743d5fe6c0161ac26436fb9d7a0d45b8135f'
 $rikeToolHash = '00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7'
 $rikeInput = Join-Path $PSScriptRoot 'rike-0.6.5-release-unsigned.apk'
 $rikeTool = Join-Path $PSScriptRoot 'apksigner.jar'
