@@ -84,4 +84,3 @@ public class RecordEditingFlowTest {
         }finally{c.pause().stop().destroy();}
     }
 }
-
