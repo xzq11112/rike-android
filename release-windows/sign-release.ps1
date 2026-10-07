@@ -6,10 +6,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
 
 $rikePackage = 'app.rike.offline'
-$rikeVersion = '0.6.4'
+$rikeVersion = '0.6.5'
+# Packaging TODO: this is the old 0.6.4 input hash. Replace it with the
+# verified 0.6.5 release APK hash before distributing the Windows package.
 $rikeInputHash = '4802137325bebf5144f65b5097186de665096fcb54520bce6468ad5e17e47f29'
 $rikeToolHash = '00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7'
-$rikeInput = Join-Path $PSScriptRoot 'rike-0.6.4-release-unsigned.apk'
+$rikeInput = Join-Path $PSScriptRoot 'rike-0.6.5-release-unsigned.apk'
 $rikeTool = Join-Path $PSScriptRoot 'apksigner.jar'
 $rikeBridge = Join-Path $PSScriptRoot 'RikeLocalTool.java'
 $rikeBridgeHash = '3782fbd4dbb3e2421ad48174e9a489705bbc6caed70bc59d380f490009ebba01'
@@ -102,7 +104,7 @@ try {
     $rikeRuntime = Find-RikeJava
 
     Write-Host ''
-    Write-Host '日课 0.6.4 · Windows 本机正式签名' -ForegroundColor Green
+    Write-Host '日课 0.6.5 · Windows 本机正式签名' -ForegroundColor Green
     Write-Host '签名不会上传文件；不需要输入日课主密码、恢复密钥或任何记录。'
     Write-Host '这次输入的是安装包签名密钥的保护密码，以后更新仍需使用它。'
     Write-Host ''
@@ -156,9 +158,9 @@ try {
 
     $rikeOutputRoot = Join-Path $PSScriptRoot 'output'
     New-Item -ItemType Directory -Path $rikeOutputRoot -Force | Out-Null
-    $rikeFinalApk = Join-Path $rikeOutputRoot 'rike-0.6.4-release.apk'
+    $rikeFinalApk = Join-Path $rikeOutputRoot 'rike-0.6.5-release.apk'
     if ((Test-Path -LiteralPath $rikeFinalApk) -or (Test-Path -LiteralPath ($rikeFinalApk + '.txt'))) {
-        $rikeFinalApk = Join-Path $rikeOutputRoot ('rike-0.6.4-release-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.apk')
+        $rikeFinalApk = Join-Path $rikeOutputRoot ('rike-0.6.5-release-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.apk')
     }
     $rikePendingApk = Join-Path $rikeOutputRoot ('pending-' + [guid]::NewGuid().ToString('N') + '.apk')
     Write-Host ''
@@ -191,12 +193,12 @@ try {
         [IO.File]::WriteAllText($rikeAliasFile, $rikeAlias, [Text.Encoding]::UTF8)
     }
     $rikeReceipt = @(
-        'Rike 0.6.4 release / versionCode 17',
+        'Rike 0.6.5 release / versionCode 18',
         ('Package: ' + $rikePackage),
         ('APK: ' + [IO.Path]::GetFileName($rikeFinalApk)),
         ('APK SHA-256: ' + (Get-FileHash -LiteralPath $rikePendingApk -Algorithm SHA256).Hash.ToLowerInvariant()),
         ('Signer certificate SHA-256: ' + $rikeFingerprint),
-        'Source: Android 0.6.4; exact build metadata in BUILD-INFO.json',
+        'Source: Android 0.6.5; exact build metadata in BUILD-INFO.json',
         'Release build: no INTERNET permission, no debuggable flag; input hash pinned.',
         'Passwords and private keys are not included in this receipt.',
         '',

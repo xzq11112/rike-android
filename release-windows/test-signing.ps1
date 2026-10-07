@@ -4,7 +4,8 @@ $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Run with Windows PowerShell 5.1.' }
 $rikeTempRoot=$env:RUNNER_TEMP
 if (-not $rikeTempRoot) { $rikeTempRoot=$env:TEMP }
-$rikeTestRoot=Join-Path $rikeTempRoot ('rike-test-' + [guid]::NewGuid().ToString('N'))
+$rikeTestParent=[IO.Path]::GetFullPath($rikeTempRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$rikeTestRoot=[IO.Path]::GetFullPath((Join-Path $rikeTempRoot ('rike-test-' + [guid]::NewGuid().ToString('N'))))
 $rikeSavedLocalAppData=$env:LOCALAPPDATA
 $env:RIKE_SYNTHETIC_KS='Synthetic-CI-Only-Password-71629'
 New-Item -ItemType Directory -Path $rikeTestRoot | Out-Null
@@ -30,7 +31,7 @@ function Run-RikeScenario([string]$Name,[string[]]$Answers,[string]$KeyRoot,[boo
     $rikeCase=Join-Path $rikeTestRoot ($Name+' 中文路径 with spaces')
     New-Item -ItemType Directory -Path $rikeCase -Force | Out-Null
     if($BlockOutput){[IO.File]::WriteAllText((Join-Path $rikeCase 'output'),'synthetic output blocker')}
-    Copy-Item $Apk (Join-Path $rikeCase 'rike-0.6.4-release-unsigned.apk')
+    Copy-Item $Apk (Join-Path $rikeCase 'rike-0.6.5-release-unsigned.apk')
     Copy-Item $Signer (Join-Path $rikeCase 'apksigner.jar')
     Copy-Item (Join-Path $PSScriptRoot 'RikeLocalTool.java') (Join-Path $rikeCase 'RikeLocalTool.java')
     $rikeScript=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'sign-release.ps1'))
@@ -80,7 +81,9 @@ try{
     $r=Run-RikeScenario 'wrong-file' @('2',$bad,'original') $root
     Assert-RikeTest (-not $r.Ok -and -not(Test-Path (Join-Path $r.Root 'rike-release.p12'))) 'Wrong file can be reselected on next run'
     $r=Run-RikeScenario 'valid-import' @('2',$rikeOriginalKey,'original') $root
-    Assert-RikeTest ($r.Ok -and (Test-Path (Join-Path $r.Case 'output\rike-0.6.4-release.apk.txt'))) 'Correct import publishes APK with verification receipt'
+    Assert-RikeTest ($r.Ok -and (Test-Path (Join-Path $r.Case 'output\rike-0.6.5-release.apk.txt'))) 'Correct import publishes APK with verification receipt'
+    $rikeReceiptText=[IO.File]::ReadAllText((Join-Path $r.Case 'output\rike-0.6.5-release.apk.txt'))
+    Assert-RikeTest ($rikeReceiptText.Contains('Rike 0.6.5 release / versionCode 18')) 'Verification receipt identifies version 0.6.5 and versionCode 18'
     Assert-RikeTest ((Get-FileHash $rikeOriginalKey -Algorithm SHA256).Hash -eq $rikeOriginalHash) 'Source key bytes unchanged'
     $identity=[IO.File]::ReadAllText((Join-Path $r.Root 'signer-sha256.txt'))
     [IO.File]::WriteAllText((Join-Path $r.Root 'key-alias.txt'),'wrong-alias')
@@ -102,7 +105,7 @@ try{
     Assert-RikeTest ($r.Ok -and @(Get-ChildItem (Join-Path $r.Case 'output') -Filter '*.apk').Count -eq 2) 'Same-name outputs are preserved with a new filename'
     $orphanRoot=Join-Path $rikeTestRoot 'orphan-receipt-state'
     $r=Run-RikeScenario 'orphan-receipt' @('2',$rikeOriginalKey,'original') $orphanRoot
-    Remove-Item (Join-Path $r.Case 'output\rike-0.6.4-release.apk')
+    Remove-Item (Join-Path $r.Case 'output\rike-0.6.5-release.apk')
     $r=Run-RikeScenario 'orphan-receipt' @() $orphanRoot
     Assert-RikeTest ($r.Ok -and @(Get-ChildItem (Join-Path $r.Case 'output') -Filter '*.apk').Count -eq 1) 'A receipt left by interrupted publication does not block retry'
     $blockedRoot=Join-Path $rikeTestRoot 'blocked-output-state'
@@ -115,7 +118,7 @@ try{
     New-Item -ItemType Directory -Path $blockedKeyRoot | Out-Null
     [IO.File]::WriteAllText((Join-Path $blockedKeyRoot 'RikeRelease'),'synthetic key directory blocker')
     $r=Run-RikeScenario 'blocked-key-directory' @('1') $blockedKeyRoot
-    Assert-RikeTest (-not $r.Ok -and -not(Test-Path (Join-Path $r.Case 'output\rike-0.6.4-release.apk'))) 'Blocked key directory publishes no APK'
+    Assert-RikeTest (-not $r.Ok -and -not(Test-Path (Join-Path $r.Case 'output\rike-0.6.5-release.apk'))) 'Blocked key directory publishes no APK'
     Remove-Item (Join-Path $blockedKeyRoot 'RikeRelease')
     $r=Run-RikeScenario 'blocked-key-directory' @('2',$rikeOriginalKey,'original') $blockedKeyRoot
     Assert-RikeTest $r.Ok 'Key-directory retry imports the original key successfully'
@@ -136,7 +139,7 @@ try{
     $rikeSavedAcl=Deny-RikeFixtureWrite $aclOutputDirectory
     try {
         $r=Run-RikeScenario 'acl-output-denied' @('1') $aclOutputRoot
-        Assert-RikeTest (-not $r.Ok -and (Test-Path (Join-Path $r.Root 'rike-release.p12')) -and -not(Test-Path (Join-Path $aclOutputDirectory 'rike-0.6.4-release.apk'))) 'Real output-directory write denial retains a valid new key without an APK'
+        Assert-RikeTest (-not $r.Ok -and (Test-Path (Join-Path $r.Root 'rike-release.p12')) -and -not(Test-Path (Join-Path $aclOutputDirectory 'rike-0.6.5-release.apk'))) 'Real output-directory write denial retains a valid new key without an APK'
         $rikeRetainedKeyHash=(Get-FileHash (Join-Path $r.Root 'rike-release.p12') -Algorithm SHA256).Hash
     } finally { Set-Acl -LiteralPath $aclOutputDirectory -AclObject $rikeSavedAcl }
     $r=Run-RikeScenario 'acl-output-denied' @() $aclOutputRoot
@@ -150,5 +153,9 @@ try{
     $env:LOCALAPPDATA=$rikeSavedLocalAppData
     Remove-Item Env:RIKE_SYNTHETIC_KS -ErrorAction SilentlyContinue
     Remove-Item Env:RIKE_SYNTHETIC_WRONG -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $rikeTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+    $rikeCleanupRoot=[IO.Path]::GetFullPath($rikeTestRoot)
+    if (-not $rikeCleanupRoot.StartsWith($rikeTestParent,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Synthetic test cleanup path escaped its temporary parent directory.'
+    }
+    Remove-Item -LiteralPath $rikeCleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
