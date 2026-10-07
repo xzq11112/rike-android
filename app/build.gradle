@@ -3,7 +3,7 @@ android {
     namespace 'app.rike.offline'
     compileSdk 35
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'app.rike.offline'; minSdk 26; targetSdk 35; versionCode 18; versionName '0.6.5'; resValue 'string', 'app_name', '日课' }
+    defaultConfig { applicationId 'app.rike.offline'; minSdk 26; targetSdk 35; versionCode 19; versionName '0.6.6'; resValue 'string', 'app_name', '日课' }
     buildTypes {
         debug { applicationIdSuffix '.preview.audit'; versionNameSuffix '-test'; resValue 'string', 'app_name', '日课 · 审查测试' }
         release { minifyEnabled false }
