@@ -36,6 +36,12 @@ public final class VaultCrypto {
     static Session duplicate(Session session) {
         synchronized(session){session.check();return new Session(session.key.clone(),session.header.clone());}
     }
+    static byte[] headerFingerprint(Session session) throws GeneralSecurityException {
+        synchronized(session){session.check();return java.security.MessageDigest.getInstance("SHA-256").digest(session.header);}
+    }
+    static byte[] headerFingerprint(byte[] file) throws GeneralSecurityException {
+        return java.security.MessageDigest.getInstance("SHA-256").digest(header(file));
+    }
     public static final class Created {
         public final Session session; public final String recoveryCode;
         Created(Session s, String r) { session = s; recoveryCode = r; }

@@ -14,6 +14,11 @@ public final class Records {
     public static String id() { return UUID.randomUUID().toString(); }
     public static String now() { return Instant.now().toString(); }
     public static JSONObject copy(JSONObject object) throws JSONException { return new JSONObject(object.toString()); }
+    /** Optional remarks from old web exports may contain JSON null, not text. */
+    public static String checkInNote(JSONObject record) {
+        Object value = record.opt("note");
+        return value instanceof String ? (String)value : "";
+    }
     public static String array(String entity) {
         for (int i = 0; i < ENTITIES.length; i++) if (ENTITIES[i].equals(entity)) return ARRAYS[i];
         throw new IllegalArgumentException("记录类型不支持");

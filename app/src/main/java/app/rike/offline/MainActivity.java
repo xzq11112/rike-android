@@ -82,6 +82,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private Uri lastExportUri;
     private String backupOutcome;
     private VaultCrypto.Session freshRestoreSession;
+    private DeviceVault device;
+    private boolean deviceMode,deviceOpening,ignoreDeviceWrapper;
+    private VaultCrypto.Session pendingProtectionSession;
     private String journalDate = LocalDate.now().toString();
     private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
     private int ink() { return Color.parseColor(dark ? "#EEE8DE" : "#2B2722"); }
@@ -93,11 +96,11 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     @Override public void onCreate(Bundle state) {
         super.onCreate(null); // Never restore framework plaintext form state.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        store = new VaultStore(this);access=VaultAccess.forPath(new File(getNoBackupFilesDir(),"vault.rike").getAbsolutePath());crypto=access.worker;access.acquire(this); biometric = new BiometricVault(this); dark = getPreferences(MODE_PRIVATE).getBoolean("dark", false);
+        store = new VaultStore(this);access=VaultAccess.forPath(new File(getNoBackupFilesDir(),"vault.rike").getAbsolutePath());crypto=access.worker;access.acquire(this); biometric = new BiometricVault(this); device=new DeviceVault(this); dark = getPreferences(MODE_PRIVATE).getBoolean("dark", false);
         if(android.os.Build.VERSION.SDK_INT>=33)modernBack=BackApi33.install(this);
         showLocked();
     }
-    @Override protected void onResume() { super.onResume();access.acquire(this);foreground=true;suppressAutomaticBiometric=false;startAutomaticBiometric(); }
+    @Override protected void onResume() { super.onResume();access.acquire(this);foreground=true;suppressAutomaticBiometric=false;if(device.enabled()&&!ignoreDeviceWrapper&&!unlocked())openDeviceVault();else startAutomaticBiometric(); }
     @Override protected void onPause() { foreground=false;lock(); super.onPause(); }
     @Override protected void onSaveInstanceState(Bundle state) { /* no plaintext saved state */ }
     @Override protected void onDestroy() { lock();if(android.os.Build.VERSION.SDK_INT>=33&&modernBack!=null)BackApi33.remove(this,modernBack);diagnostics.clear();diagnosticExport=null;access.release(this);super.onDestroy(); }
@@ -132,6 +135,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(writer!=null){writer.close();writer=null;writerSession=null;}
         if (session != null) session.close();
         if(freshRestoreSession!=null){freshRestoreSession.close();freshRestoreSession=null;}
+        if(pendingProtectionSession!=null){pendingProtectionSession.close();pendingProtectionSession=null;}
+        deviceOpening=false;deviceMode=false;
         session = null; data = null; recordIndex=null; historyDate=null;journalFilter=null;journalEditing=false;refreshPracticeOptions = null; themeUpdates.clear();themeButton=null;
         managedEntity=null;typeOrder.clear();orderDirty=false;maintenance=null;historyFromStats=false;
         feedback=null;waitingControls.clear();activeAction=null;waitingAction=null;waitingLabel=null;
@@ -374,6 +379,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         cancelAutomaticUnlock();biometricAttempted=false;
         base();scroll();text(page,"日 课",34);text(page,"静观 · 日有所记",16);
         boolean fresh=!store.exists(), restoring=fresh&&pendingAction==RESTORE&&pendingUri!=null, creating=fresh&&!restoring;
+        if(!fresh&&device!=null&&device.enabled()&&!ignoreDeviceWrapper){
+            text(page,"尚未设置主密码",19);
+            text(page,"记录仍在本机加密保存；使用这台手机的人可以直接进入。可在设置中添加主密码与恢复密钥，再启用指纹。",14);
+            button(page,"进入日课",this::openDeviceVault);
+            if(foreground&&!suppressAutomaticBiometric)openDeviceVault();
+            return;
+        }
         text(page,creating&&BuildConfig.DEBUG?"本机加密 · 不联网\n体验测试版，请先使用虚构记录。":"本机加密 · 不联网",13);
         if(pendingUri!=null||pickerAction!=0)text(page,handoffLabel(pendingUri!=null?pendingAction:pickerAction),14);
         EditText pass=field(page,creating?"设置主密码":restoring?"备份导出时的主密码":"输入主密码","",false,true);
@@ -436,6 +448,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         }),true);
         if(creating){
             text(page,BuildConfig.DEBUG?"请牢记主密码，并定期导出和验证加密备份。":"请保管好主密码与离线恢复密钥，并定期验证加密备份。",14);
+            button(page,"暂不设置密码，直接使用",this::createDeviceVault);
             button(page,"从加密备份恢复",()->pick(RESTORE));
         }
         if(restoring)button(page,"取消恢复",()->{pendingUri=null;pendingAction=0;showLocked();});
@@ -505,7 +518,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         });
     }
     private void startAutomaticBiometric(){
-        if(!foreground||suppressAutomaticBiometric||isFinishing()||unlocked()||unlockInput==null||busy||biometricAttempted||android.os.Build.VERSION.SDK_INT<28||!biometric.enabled())return;
+        if(deviceMode||!foreground||suppressAutomaticBiometric||isFinishing()||unlocked()||unlockInput==null||busy||biometricAttempted||android.os.Build.VERSION.SDK_INT<28||!biometric.enabled())return;
         biometricAttempted=true;authenticateBiometric(false);
     }
     private void biometricFallback(){
@@ -514,6 +527,130 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(biometricRetry!=null)biometricRetry.setVisibility(View.VISIBLE);
         if(unlockStatus!=null)unlockStatus.setText("可输入主密码自动解锁，或重试指纹。");
         queuePasswordProbe();
+    }
+    private void createDeviceVault(){
+        if(busy||store.exists())return;
+        long token=generation;setBusy(true);inputsEnabled(false);
+        crypto.execute(()->{
+            VaultCrypto.Created created=null;JSONObject empty=null;RecordIndex prepared=null;Exception error=null;
+            byte[] random=new byte[32];char[] secret=new char[64];
+            try{
+                new java.security.SecureRandom().nextBytes(random);
+                char[] hex="0123456789abcdef".toCharArray();
+                for(int i=0;i<random.length;i++){secret[2*i]=hex[(random[i]&255)>>>4];secret[2*i+1]=hex[random[i]&15];}
+                if(token!=generation||store.exists())throw new CancellationException();
+                created=VaultCrypto.create(secret);empty=Records.empty();
+                if(token!=generation||!access.owns(this)||store.exists())throw new CancellationException();
+                // Install automatic access before the first ciphertext commit.
+                device.enroll(created.session);persist(created.session,empty);prepared=buildIndex(empty);
+            }catch(Exception e){error=e;}
+            finally{Arrays.fill(random,(byte)0);Arrays.fill(secret,'\0');}
+            VaultCrypto.Created made=created;JSONObject result=empty;RecordIndex indexResult=prepared;Exception failure=error;
+            runOnUiThread(()->{
+                if(token!=generation||!foreground||!access.owns(this)||isFinishing()){if(made!=null)made.session.close();return;}
+                setBusy(false);inputsEnabled(true);
+                if(failure!=null){if(made!=null)made.session.close();fail(failure);showLocked();return;}
+                session=made.session;data=result;recordIndex=indexResult;deviceMode=true;ignoreDeviceWrapper=false;
+                toast("已进入，可稍后在设置中添加密码");showApp();consumePending();
+            });
+        });
+    }
+    private void openDeviceVault(){
+        if(!foreground||!store.exists()||deviceOpening||busy||unlocked()||isFinishing())return;
+        long token=generation;deviceOpening=true;setBusy(true);
+        crypto.execute(()->{
+            VaultCrypto.Opened opened=null;JSONObject parsed=null;RecordIndex prepared=null;Exception error=null;boolean mismatch=false;
+            try{
+                if(token!=generation||!access.owns(this))throw new CancellationException();
+                byte[] file=store.read();
+                if(!device.matches(file))mismatch=true;
+                else{
+                    opened=device.open(file);parsed=Records.validate(new JSONObject(new String(opened.plaintext,StandardCharsets.UTF_8)));
+                    vaultBytes=opened.plaintext.length;prepared=buildIndex(parsed);
+                }
+            }catch(Exception e){error=e;}finally{if(opened!=null)Arrays.fill(opened.plaintext,(byte)0);}
+            VaultCrypto.Opened got=opened;JSONObject result=parsed;RecordIndex indexResult=prepared;Exception failure=error;boolean fallback=mismatch;
+            runOnUiThread(()->{
+                if(token!=generation||!foreground||!access.owns(this)||isFinishing()){if(got!=null)got.session.close();return;}
+                deviceOpening=false;setBusy(false);
+                if(fallback||failure!=null){
+                    if(got!=null)got.session.close();ignoreDeviceWrapper=true;deviceMode=false;showLocked();
+                    if(failure!=null)fail(failure);return;
+                }
+                session=got.session;data=result;recordIndex=indexResult;deviceMode=true;
+                showApp();consumePending();
+            });
+        });
+    }
+    private void setUpPassword(){
+        if(!unlocked()||!deviceMode||busy)return;
+        LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
+        EditText pass=field(form,"设置主密码","",false,true),again=field(form,"再次输入主密码","",false,true);
+        passwordKeyboard(form,pass,again);
+        text(form,"可以使用几个互不相关的汉语词汇拼音组成长口令。请牢记密码，并保管恢复密钥。",14);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("设置密码与恢复密钥").setView(form).setNegativeButton("暂不设置",(x,w)->cancelPasswordSetup()).setPositiveButton("下一步",null).create();
+        d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(busy)return;
+            String value=pass.getText().toString();
+            if(!value.equals(again.getText().toString())){toast("两次密码不一致");return;}
+            char[] chars=value.toCharArray();try{VaultCrypto.requirePassword(chars);}catch(Exception e){Arrays.fill(chars,'\0');fail(e);return;}
+            long token=generation;VaultCrypto.Session owner=session;setBusy(true);pass.setText("");again.setText("");
+            crypto.execute(()->{
+                VaultCrypto.Created created=null;Exception error=null;
+                try{created=VaultCrypto.create(chars);}catch(Exception e){error=e;}finally{Arrays.fill(chars,'\0');}
+                VaultCrypto.Created made=created;Exception failure=error;
+                runOnUiThread(()->{
+                    if(token!=generation||session!=owner||!unlocked()){if(made!=null)made.session.close();return;}
+                    setBusy(false);
+                    if(!d.isShowing()){if(made!=null)made.session.close();return;}
+                    if(failure!=null){fail(failure);return;}
+                    cancelPasswordSetup();pendingProtectionSession=made.session;
+                    if(BuildConfig.DEBUG)finishPasswordSetup(made,d,token);
+                    else{d.dismiss();showProtectionRecovery(made,token);}
+                });
+            });
+        });
+    }
+    private void cancelPasswordSetup(){
+        if(pendingProtectionSession!=null){pendingProtectionSession.close();pendingProtectionSession=null;}
+    }
+    private void showProtectionRecovery(VaultCrypto.Created created,long token){
+        LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
+        text(form,"将恢复密钥离线保存。它也能解密资料，不能发给别人。确认完成前，原有资料和进入方式保留。",14);
+        text(form,created.recoveryCode.replaceAll("(.{8})(?!$)","$1 "),18);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("1 / 2 · 保存恢复密钥").setView(form)
+            .setNegativeButton("取消",(x,w)->cancelPasswordSetup()).setPositiveButton("已保存，继续核对",(x,w)->verifyProtectionRecovery(created,token)).create();
+        d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
+    }
+    private void verifyProtectionRecovery(VaultCrypto.Created created,long token){
+        if(token!=generation||pendingProtectionSession!=created.session||!unlocked())return;
+        LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
+        text(form,"根据离线副本完整重输恢复密钥。完成后才启用密码保护。",14);
+        EditText verify=field(form,"完整重输恢复密钥","",true,true);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("2 / 2 · 核对恢复密钥").setView(form)
+            .setNegativeButton("取消",(x,w)->cancelPasswordSetup()).setPositiveButton("启用密码保护",null).create();
+        d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(!verify.getText().toString().replaceAll("\\s","").equalsIgnoreCase(created.recoveryCode)){verify.setError("恢复密钥不一致，请核对离线副本。");return;}
+            verify.setText("");finishPasswordSetup(created,d,token);
+        });
+    }
+    private void finishPasswordSetup(VaultCrypto.Created created,AlertDialog dialog,long token){
+        if(token!=generation||!unlocked()||!deviceMode||pendingProtectionSession!=created.session)return;
+        VaultCrypto.Session original=session,next=created.session;
+        dialog.setCancelable(false);dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);setBusy(true);inputsEnabled(false);
+        writer().rekey(next,(saved,commitFailure)->{
+            if(commitFailure==null){try{device.disable();}catch(Exception ignored){/* The old wrapper cannot match the new authenticated header. */}}
+            RecordIndex prepared=saved==null?null:buildIndex(saved);
+            runOnUiThread(()->{
+                if(token!=generation||!unlocked()){next.close();return;}
+                setBusy(false);inputsEnabled(true);
+                if(commitFailure!=null){dialog.setCancelable(true);dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);fail(commitFailure);return;}
+                pendingProtectionSession=null;data=saved;recordIndex=prepared;session=next;writerSession=next;original.close();
+                deviceMode=false;ignoreDeviceWrapper=true;dialog.dismiss();toast("密码与密钥已设置，可在设置中启用指纹");showApp();consumePending();
+            });
+        });
     }
     private void showRecovery(VaultCrypto.Created created){
         session=created.session;base();scroll();text(page,"1 / 2 · 离线保存恢复密钥",24);
@@ -642,12 +779,12 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LinearLayout manualArea=column();form.addView(manualArea);
         EditText manual=field(manualArea,"任意分钟数",d.optString("manual"),false,false);manualArea.getChildAt(0).setVisibility(View.GONE);manual.setContentDescription("任意分钟数");manual.setHint("任意分钟数");manual.setInputType(InputType.TYPE_CLASS_NUMBER);manual.setMinHeight(dp(48));
         LinearLayout detailsArea=column();form.addView(detailsArea);
-        boolean[] detailsOpen={!d.optString("note").isEmpty()||!"today".equals(dateMode[0])};
+        boolean[] detailsOpen={!Records.checkInNote(d).isEmpty()||!"today".equals(dateMode[0])};
         detailsArea.setVisibility(detailsOpen[0]?View.VISIBLE:View.GONE);
         Button datePick=button(detailsArea,"练习日期 · "+date[0]+" ▾",()->chooseDay(date[0],indexMarks(false),"练习记录",chosen->{date[0]=chosen.toString();dateMode[0]="manual";try{JSONObject current=draft("checkIn");current.put("date",date[0]).put("dateMode","manual");saveDraft("checkIn",current);}catch(Exception e){fail(e);}showApp();}));
         datePick.setContentDescription("选择练习日期");
         TextView dateHint=text(detailsArea,"legacy".equals(dateMode[0])?"旧草稿日期："+date[0]+"。请选择继续补记，或改用今日。":"",12);dateHint.setVisibility("legacy".equals(dateMode[0])?View.VISIBLE:View.GONE);
-        EditText note=field(detailsArea,"打卡备注（可选）",d.optString("note"),true,false);note.setHint("只属于这一次练习的简短备注");
+        EditText note=field(detailsArea,"打卡备注（可选）",Records.checkInNote(d),true,false);note.setHint("只属于这一次练习的简短备注");
         boolean[] adjusting={false};
         Runnable write=()->{try{JSONObject n=object("typeId",type[0],"manual",manual.getText().toString(),"date",date[0],"note",note.getText().toString(),"dateMode",dateMode[0]);if(preset[0]!=null)n.put("preset",preset[0]);saveDraft("checkIn",n);}catch(Exception e){fail(e);}};
         if("legacy".equals(dateMode[0]))button(detailsArea,"继续补记 "+date[0],()->{dateMode[0]="manual";write.run();dateHint.setVisibility(View.GONE);});
@@ -834,7 +971,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             for(JSONObject r:entries){
                 LinearLayout line=row(card);line.setGravity(Gravity.CENTER_VERTICAL);LinearLayout body=column();line.addView(body,new LinearLayout.LayoutParams(0,-2,1));text(body,r.optString("practiceTypeName"),16);
                 if(Records.find(data,"practiceType",r.optString("practiceTypeId"))==null)text(body,"历史类型",11);
-                if(!r.optString("note").isEmpty())text(body,r.optString("note"),14);
+                String note=Records.checkInNote(r);if(!note.isEmpty())text(body,note,14);
                 text(line,r.optInt("durationMinutes")+" 分钟",14);headerIcon(line,ZenIcon.DELETE,"删除打卡记录",()->remove("checkIn",r.optString("id")));
             }
         }
@@ -921,7 +1058,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             });
             Button[] dateButton=new Button[1];dateButton[0]=button(form,"练习日期 · "+selectedDay[0],()->chooseDay(selectedDay[0],indexMarks(false),"练习记录",day->{selectedDay[0]=day.toString();dateButton[0].setText("练习日期 · "+selectedDay[0]);}));
             EditText minutes=field(form,"时长（分钟）",old.optString("durationMinutes"),false,false);minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
-            EditText note=field(form,"备注（可选）",old.optString("note"),true,false);
+            EditText note=field(form,"备注（可选）",Records.checkInNote(old),true,false);
             ScrollView scroll=new ScrollView(this);scroll.setSaveEnabled(false);scroll.addView(form);
             AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("编辑练习").setView(scroll).setNegativeButton("取消",null).setPositiveButton("保存修改",null).create();dialog(d);
             d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
@@ -972,12 +1109,19 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void settings()throws Exception{
         text(page,"设置",24);
         text(page,"解锁方式",19);
+        if(deviceMode){
+            text(page,"尚未设置主密码。记录在本机加密保存，使用这台手机的人可以直接进入。",14);
+            button(page,"设置密码与恢复密钥",this::setUpPassword);
+            Button fingerprint=button(page,"启用指纹解锁",()->authenticateBiometric(true));fingerprint.setEnabled(false);
+            text(page,"完成主密码和恢复密钥设置后，才可启用指纹及导出加密备份。",14);
+        }else{
         button(page,biometric.enabled()?"重新设置指纹解锁":"启用指纹解锁",()->authenticateBiometric(true));
         if(biometric.enabled())button(page,"停用指纹解锁",()->{
             background(()->{biometric.disable();return true;},ok->{toast("已停用，之后使用主密码解锁");showApp();},Diagnostics.Code.BIOMETRIC_UNAVAILABLE);
         });
         text(page,"系统中已登记的强生物识别可解锁。新增指纹后需重新启用；请保留主密码。",14);
         button(page,"更换主密码",this::changePassword);
+        }
         text(page,"不联网、不遥测、不接入 AI；没有密码找回服务。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
         text(page,"备份",19);
         text(page,"导出、验证与恢复加密备份，以及旧网页资料迁移。",14);
@@ -997,6 +1141,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     /** Cipher preparation, Keystore wrapping and backup parsing stay off the UI. */
     @android.annotation.TargetApi(28)
     private void authenticateBiometric(boolean enroll){
+        if(deviceMode){toast("请先完成主密码与恢复密钥设置，再启用指纹");return;}
         if(android.os.Build.VERSION.SDK_INT<28){toast("此版本系统请使用主密码");return;}
         if(enroll&&!unlocked())return;
         passwordRevision++;if(passwordDebounce!=null)unlockHandler.removeCallbacks(passwordDebounce);
@@ -1044,6 +1189,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         });
     }
     private void changePassword(){
+        if(deviceMode){setUpPassword();return;}
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
         EditText p=field(form,"新主密码（不限制最短长度）","",false,true),again=field(form,"再次输入","",false,true);
         passwordKeyboard(form,p,again);
@@ -1144,6 +1290,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         }
     }
     private void pick(int action){
+        if(action==EXPORT&&deviceMode){requireBackupPassword();return;}
         // No plaintext crosses into the external picker. onPause destroys our session.
         Intent intent=new Intent(action==EXPORT||action==DIAGNOSTICS?Intent.ACTION_CREATE_DOCUMENT:Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/octet-stream");
@@ -1193,6 +1340,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             },ok->toast("诊断已保存到所选文件，未自动上传。"),Diagnostics.Code.DIAGNOSTIC_EXPORT_FAILED);return;
         }
         if(action==EXPORT){
+            if(deviceMode){requireBackupPassword();return;}
             background(()->{
                 byte[] ciphertext=store.read();try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")){
                     if(out==null)throw new IOException();out.write(ciphertext);out.flush();
@@ -1213,6 +1361,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             },Diagnostics.Code.BACKUP_READ_FAILED);return;
         }
         readBackup(uri,action==VERIFY);
+    }
+    private void requireBackupPassword(){
+        toast("请先设置主密码与恢复密钥，再导出可恢复的加密备份");
+        if(unlocked()&&!busy)setUpPassword();
     }
     private void readBackup(Uri uri,boolean verifyOnly){
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
@@ -1237,9 +1389,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                     if(problem!=null){diagnostics.record(verifyOnly?Diagnostics.Code.BACKUP_VERIFY_FAILED:Diagnostics.Code.BACKUP_READ_FAILED);fail(problem);return;}d.dismiss();
                     try{
                         if(verifyOnly){backupOutcome=(uri.equals(lastExportUri)?"刚导出的备份":"所选备份")+"已成功解密并校验。当前资料库没有被修改。";saved(backupOutcome);showApp();info("备份验证成功",Records.summary(result)+"\n"+backupOutcome);return;}
-                        confirm("确认替换当前资料库？","备份中的内容：\n"+Records.summary(result)+"\n\n当前手机的内容：\n"+Records.summary(data)+"\n\n替换包含记录、设置、草稿及已删除内容；恢复数据将使用当前主密码重新加密。",()->{
+                        confirm("确认替换当前资料库？","备份中的内容：\n"+Records.summary(result)+"\n\n当前手机的内容：\n"+Records.summary(data)+"\n\n替换包含记录、设置、草稿及已删除内容；"+(deviceMode?"恢复数据将使用当前本机密钥重新加密。":"恢复数据将使用当前主密码重新加密。"),()->{
                             if(ticket!=generation||!unlocked())return;
-                            replaceAsync(result,()->{saved("备份已恢复，使用当前主密码保存在本机。");showApp();},()->diagnostics.record(Diagnostics.Code.RESTORE_WRITE_FAILED));
+                            replaceAsync(result,()->{saved(deviceMode?"备份已恢复，使用当前本机密钥加密保存。":"备份已恢复，使用当前主密码保存在本机。");showApp();},()->diagnostics.record(Diagnostics.Code.RESTORE_WRITE_FAILED));
                         });
                     }catch(Exception e){fail(e);}
                 });
