@@ -7,7 +7,7 @@ Set-StrictMode -Version 2
 
 $rikePackage = 'app.rike.offline'
 $rikeVersion = '0.6.7'
-$rikeInputHash = '981a9b9038aac1c005837bab950a0a6448251ed795196fa603c5d3ed6d8247a8'
+$rikeInputHash = 'd68677b0445964ac8f326b5c12860719a38446ee0e328c3b7eee2c42571a5e27'
 $rikeToolHash = '00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7'
 $rikeInput = Join-Path $PSScriptRoot 'rike-0.6.7-release-unsigned.apk'
 $rikeTool = Join-Path $PSScriptRoot 'apksigner.jar'
