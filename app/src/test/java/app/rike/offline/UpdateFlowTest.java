@@ -54,7 +54,7 @@ public class UpdateFlowTest {
             AtomicInteger calls=new AtomicInteger();set(a,"updateRequestFactory",(Supplier<UpdateChecker.Request>)()->new UpdateChecker.Request(){
                 @Override UpdateChecker.Release load()throws IOException{
                     if(calls.incrementAndGet()==1)throw new IOException("SYNTHETIC-EXCEPTION-PRIVATE");
-                    return new UpdateChecker.Release("0.6.6",null);
+                    return new UpdateChecker.Release(BuildConfig.VERSION_NAME.replace("-test",""),null);
                 }
             });
             open(a);click(a,"检查更新");settle(a);assertEquals("检查失败，请检查网络后重试，或前往 GitHub 查看。",TestWork.get(a,"updateMessage"));

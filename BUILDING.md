@@ -1,6 +1,6 @@
 # 构建、测试与签名
 
-当前代码为日课 Android 0.6.6，`versionCode` 为 19。公开仓库根目录就是 Android 工程，不需要网页版、Cloudflare 或 ChatGPT 运行环境。网页版保持私有，不属于本仓库的 AGPL-3.0-only 授权范围。
+当前代码为日课 Android 0.6.7，`versionCode` 为 20。公开仓库根目录就是 Android 工程，不需要网页版、Cloudflare 或 ChatGPT 运行环境。网页版保持私有，不属于本仓库的 AGPL-3.0-only 授权范围。
 
 ## 环境
 
