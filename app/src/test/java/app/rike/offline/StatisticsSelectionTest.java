@@ -43,6 +43,9 @@ public class StatisticsSelectionTest {
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();VaultCrypto.Created keys=VaultCrypto.create("synthetic-settings".toCharArray());set(a,"session",keys.session);set(a,"data",Records.empty());show(a);
         assertNull(TestWork.named(a.getWindow().getDecorView(),"更多"));assertTrue(TestWork.named(a.getWindow().getDecorView(),"设置") instanceof Button);
         TestWork.navigate(a,5);View screen=a.getWindow().getDecorView();assertNotNull(TestWork.named(screen,"解锁方式"));assertNotNull(TestWork.named(screen,"备份"));assertNull(TestWork.named(screen,"导出加密备份"));assertNull(TestWork.named(screen,"查看本地诊断"));assertNull(TestWork.named(screen,"版本与更新"));
-        click(screen,"备份");screen=a.getWindow().getDecorView();assertNotNull(TestWork.named(screen,"导出加密备份"));assertNotNull(TestWork.named(screen,"查看本地诊断"));click(screen,"返回设置");assertEquals(5,TestWork.get(a,"tab"));c.pause().stop().destroy();
+        assertNotNull(TestWork.named(screen,"维护"));
+        click(screen,"备份");screen=a.getWindow().getDecorView();assertNotNull(TestWork.named(screen,"导出加密备份"));assertNull(TestWork.named(screen,"查看本地诊断"));assertNull(TestWork.named(screen,"版本与更新"));click(screen,"返回设置");assertEquals(5,TestWork.get(a,"tab"));
+        click(a.getWindow().getDecorView(),"维护");screen=a.getWindow().getDecorView();assertNotNull(TestWork.named(screen,"查看本地诊断"));assertNotNull(TestWork.named(screen,"版本与更新"));assertNull(TestWork.named(screen,"导出加密备份"));
+        click(screen,"版本与更新");a.onBackPressed();assertEquals(6,TestWork.get(a,"tab"));assertNull(TestWork.get(a,"maintenance"));a.onBackPressed();assertEquals(5,TestWork.get(a,"tab"));c.pause().stop().destroy();
     }
 }

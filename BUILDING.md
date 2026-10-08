@@ -15,7 +15,7 @@
 
 用 Android Studio 打开仓库根目录，并安装 SDK 35。命令行可配置本机 `JAVA_HOME`、`ANDROID_HOME`，或用 `local.properties` 指定本机 SDK 路径；这个文件不提交 Git。
 
-首次构建需联网下载公开工具和 Maven 依赖，不需要作者的账号凭证、业务服务器或生产签名密钥。应用运行时不需要网络。
+首次构建需联网下载公开工具和 Maven 依赖，不需要作者的账号凭证、业务服务器或生产签名密钥。记录与备份功能离线运行；仅用户手动检查更新时需要网络。
 
 ## 测试与构建
 
@@ -32,7 +32,7 @@ Windows 使用同参数的 `gradlew.bat`。请在没有真实资料的测试环�
 | `app/build/outputs/apk/debug/app-debug.apk` | 可调试测试包，包名 `app.rike.offline.preview.audit`，只使用虚构资料 |
 | `app/build/outputs/apk/release/app-release-unsigned.apk` | 正式构建，包名 `app.rike.offline`，本机签名后才可安装 |
 
-流水线配置在 [`.github/workflows/android-offline.yml`](./.github/workflows/android-offline.yml)。验证应包含 Debug/Release 测试、Release lint，以及最终 Release APK 没有 `INTERNET` 权限和 `debuggable` 标记的检查。已执行检查与尚未完成的设备验收见 [VALIDATION.md](./VALIDATION.md)。
+流水线配置在 [`.github/workflows/android-offline.yml`](./.github/workflows/android-offline.yml)。验证包含 Debug/Release 测试、Release lint，以及最终 Release APK 的手动检查更新所需 `INTERNET` 权限和无 `debuggable` 标记检查。更新检查测试覆盖请求内容、超时、禁止重定向、响应大小、版本比较、失败重试及生命周期。已执行检查与尚未完成的设备验收见 [VALIDATION.md](./VALIDATION.md)。
 
 ## 签名与更新
 

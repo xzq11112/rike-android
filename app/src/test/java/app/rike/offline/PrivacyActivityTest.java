@@ -27,9 +27,10 @@ public class PrivacyActivityTest {
         controller.pause();assertNull(get(a,"session"));assertNull(get(a,"data"));assertTrue(c.session.isClosed());
         assertFalse(text(a.getWindow().getDecorView()).contains("synthetic-private-journal"));controller.stop().destroy();
     }
-    @Test public void noInternetNoBackupAndSecureWindow(){
+    @Test public void manualUpdatePermissionWithNoBackupAndSecureWindow(){
         ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=controller.get();
-        assertEquals(PackageManager.PERMISSION_DENIED,a.getPackageManager().checkPermission(Manifest.permission.INTERNET,a.getPackageName()));
+        assertEquals(PackageManager.PERMISSION_GRANTED,a.getPackageManager().checkPermission(Manifest.permission.INTERNET,a.getPackageName()));
+        assertFalse((a.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC)!=0);
         assertTrue((a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
         assertFalse((a.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)!=0);
         controller.pause().stop().destroy();

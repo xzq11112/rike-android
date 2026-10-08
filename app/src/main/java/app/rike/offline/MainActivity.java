@@ -72,6 +72,12 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private int heatmapYear=LocalDate.now().getYear();
     private boolean journalEditing;
     private String managedEntity,maintenance;
+    private ExecutorService updateWorker;
+    private Future<?> updateTask;
+    private UpdateChecker.Request updateRequest;
+    private java.util.function.Supplier<UpdateChecker.Request> updateRequestFactory=UpdateChecker.Request::new;
+    private UpdateChecker.Release latestRelease;
+    private String updateMessage="尚未检查更新";
     private final List<String> typeOrder=new ArrayList<>();
     private boolean orderDirty,historyFromStats;
     private String historyDate,journalFilter;
@@ -103,13 +109,14 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     @Override protected void onResume() { super.onResume();access.acquire(this);foreground=true;suppressAutomaticBiometric=false;if(device.enabled()&&!ignoreDeviceWrapper&&!unlocked())openDeviceVault();else startAutomaticBiometric(); }
     @Override protected void onPause() { foreground=false;lock(); super.onPause(); }
     @Override protected void onSaveInstanceState(Bundle state) { /* no plaintext saved state */ }
-    @Override protected void onDestroy() { lock();if(android.os.Build.VERSION.SDK_INT>=33&&modernBack!=null)BackApi33.remove(this,modernBack);diagnostics.clear();diagnosticExport=null;access.release(this);super.onDestroy(); }
+    @Override protected void onDestroy() { lock();if(updateWorker!=null)updateWorker.shutdownNow();if(android.os.Build.VERSION.SDK_INT>=33&&modernBack!=null)BackApi33.remove(this,modernBack);diagnostics.clear();diagnosticExport=null;access.release(this);super.onDestroy(); }
     @Override public void onBackPressed() {
         if(session==null){moveTaskToBack(true);return;}
         if(busy&&(managedEntity!=null||tab>=4||historyFromStats)){status("正在保存，请稍候；也可以使用右上角锁定。");return;}
         if(managedEntity!=null){leaveManagement(this::showApp);return;}
         
-        if(tab==4&&maintenance!=null){maintenance=null;showApp();return;}
+        if(tab==6&&maintenance!=null){maintenance=null;showApp();return;}
+        if(tab==6){tab=5;showApp();return;}
         if(tab==4){tab=backupOrigin;showApp();return;}
         if(tab==5){tab=settingsOrigin;showApp();return;}
         if(tab==1&&historyFromStats){historyFromStats=false;tab=3;showApp();return;}
@@ -129,6 +136,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void lock() {
         locking = true; generation++; setBusy(false);cancelAutomaticUnlock();
+        if(updateRequest!=null){updateRequest.cancel();updateRequest=null;}
+        if(updateTask!=null){updateTask.cancel(true);updateTask=null;}
+        latestRelease=null;updateMessage="尚未检查更新";
         if (biometricCancel != null) { biometricCancel.cancel(); biometricCancel = null; }
         if(biometric!=null&&crypto!=null)crypto.execute(()->{try{biometric.cancelEnrollment();}catch(Exception ignored){}});
         for (AlertDialog d : new ArrayList<>(dialogs)) d.dismiss();
@@ -719,10 +729,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         retryDraft=button(root,"重试草稿保存",()->{if(writer!=null){status("正在重试草稿保存…（尚未提交记录）");retryDraft.setVisibility(View.GONE);writer.flushSoon();}});retryDraft.setVisibility(draftFailed?View.VISIBLE:View.GONE);
         if(vaultBytes>=VaultCrypto.MAX_PLAINTEXT*0.8)text(root,capacityLabel(),12);
         String[] labels={"今日","记录","日记","数据","设置"};LinearLayout nav=row(root);
-        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->leaveManagement(()->{if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;journalEditing=false;maintenance=null;tab=index;showApp();}));b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab);}
+        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->leaveManagement(()->{if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;journalEditing=false;maintenance=null;tab=index;showApp();}));b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab||(index==5&&tab>=4));}
         scroll();
         renderedRoute=maintenance!=null?8:tab;
-        try{switch(tab){case 0:today();break;case 1:history();break;case 2:journals();break;case 3:statistics();break;case 4:backups();break;case 5:settings();break;}}
+        try{switch(tab){case 0:today();break;case 1:history();break;case 2:journals();break;case 3:statistics();break;case 4:backups();break;case 5:settings();break;case 6:maintenancePage();break;}}
         catch(Exception e){fail(e);}
         ScrollView rendered=contentScroll;int offset=scrollOffsets[renderedRoute];long token=generation;
         rendered.post(()->{if(token==generation&&contentScroll==rendered&&unlocked())rendered.scrollTo(0,offset);});
@@ -903,7 +913,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void info(String title,String message){AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(title).setMessage(message).setPositiveButton("关闭",null).create();dialog(d);}
     private String preview(String text){return text.length()>600?text.substring(0,600)+"…":text;}
     private List<JSONObject> sorted(String array,String date)throws Exception{return array.equals("journals")?index().journalRows:index().history;}
-    private void remove(String entity,String id){confirm("移到已删除？","可在设置 → 备份 → 已删除中恢复。完整加密备份仍保留这些内容。",()->changeAsync(d->Records.delete(d,entity,id),()->{saved("记录已移到已删除，可恢复。");showApp();}));}
+    private void remove(String entity,String id){confirm("移到已删除？","可在设置 → 维护 → 已删除中恢复。完整加密备份仍保留这些内容。",()->changeAsync(d->Records.delete(d,entity,id),()->{saved("记录已移到已删除，可恢复。");showApp();}));}
     private void dateFilter(boolean journal){
         String chosen=journal?journalFilter:historyDate;text(page,chosen==null?"最近 7 天 · 含今天":chosen,14);
         LinearLayout controls=row(page);button(controls,"选择日期",()->dateCalendar(journal));if(chosen!=null)button(controls,"最近 7 天",()->{if(journal){journalFilter=null;journalPage=0;}else{historyDate=null;historyPage=0;}showApp();});
@@ -1143,10 +1153,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         text(page,"系统中已登记的强生物识别可解锁。新增指纹后需重新启用；请保留主密码。",14);
         button(page,"更换主密码",this::changePassword);
         }
-        text(page,"不联网、不遥测、不接入 AI；没有密码找回服务。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
+        text(page,"记录只保存在本机，不遥测、不接入 AI；没有密码找回服务。仅手动检查更新时连接 GitHub，不上传记录。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
         text(page,"备份",19);
         text(page,"导出、验证与恢复加密备份，以及旧网页资料迁移。",14);
         Button backups=button(page,"备份与导出",()->{backupOrigin=5;tab=4;showApp();});backups.setContentDescription("备份");
+        text(page,"维护",19);
+        text(page,"恢复已删除内容、查看操作历史、版本更新与本地诊断。",14);
+        button(page,"维护",()->{maintenance=null;tab=6;showApp();});
     }
     private void showDiagnostics(){
         if(!unlocked())return;
@@ -1259,7 +1272,6 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         return "请解锁继续使用。";
     }
     private void backups()throws Exception{
-        if(maintenance!=null){backupMaintenance();return;}
         button(page,"返回设置",()->{tab=5;showApp();});
         text(page,"加密备份",22);text(page,Records.summary(data),14);text(page,capacityLabel(),13);
         text(page,"选择本机目录或离线 U 盘。导出后，请验证文件确实可解密。",14);
@@ -1274,7 +1286,11 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             confirm("导入旧网页数据","旧 JSON 本身是明文。导入只在本机完成；验证加密备份可恢复后，再处理旧明文副本。",()->pick(IMPORT));
         });
         text(page,"备份包含练习设置、记录、感悟、草稿及可恢复的已删除内容。旧梦境保留但不显示。",13);
-        text(page,"维护",18);
+    }
+    private void maintenancePage()throws Exception{
+        if(maintenance!=null){maintenanceDetails();return;}
+        button(page,"返回设置",()->{tab=5;showApp();});
+        text(page,"维护",22);
         button(page,"已删除",()->{maintenance="deleted";scrollOffsets[8]=0;showApp();});
         button(page,"操作历史",()->{maintenance="audit";scrollOffsets[8]=0;showApp();});
         button(page,"版本与更新",()->{maintenance="version";scrollOffsets[8]=0;showApp();});
@@ -1289,8 +1305,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private String deletedLabel(String entity,JSONObject r){
         switch(entity){case "practiceType":return r.optString("name");case "durationPreset":return r.optInt("minutes")+" 分钟";case "checkIn":return r.optString("practiceDate")+" · "+r.optString("practiceTypeName")+" · "+r.optInt("durationMinutes")+" 分钟";case "journal":return r.optString("journalDate")+" 感悟";default:return "归档资料";}
     }
-    private void backupMaintenance()throws Exception{
-        button(page,"返回备份",()->{maintenance=null;showApp();});
+    private void maintenanceDetails()throws Exception{
+        button(page,"返回维护",()->{maintenance=null;showApp();});
         if(maintenance.equals("deleted")){
             text(page,"已删除",22);text(page,"这些内容仍保存在加密资料库和完整备份中，可以恢复。",13);
             List<JSONObject> deleted=index().deletedRows;deletedPage=Math.min(deletedPage,Math.max(0,(deleted.size()-1)/PAGE_SIZE));
@@ -1305,10 +1321,39 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             text(page,"操作历史",22);text(page,"本机加密历史 · 最近 50 条",13);JSONArray log=data.getJSONArray("auditLog");
             for(int i=log.length()-1,shown=0;i>=0&&shown<50;i--){JSONObject a=log.getJSONObject(i);if("dream".equals(a.optString("entity")))continue;shown++;text(page,RecordTime.label(new JSONObject().put("createdAt",a.opt("occurredAt")))+" · "+actionLabel(a.optString("action"))+" · "+entityLabel(a.optString("entity")),14);}
         }else{
-            text(page,"版本与更新",22);text(page,"日课 "+BuildConfig.VERSION_NAME+" · "+BuildConfig.VERSION_CODE,14);
-            text(page,BuildConfig.DEBUG?"体验测试版，仅使用虚构资料。":"Release 构建：正式使用前仍需稳定签名与真机验收。",14);
-            text(page,"更新前导出并验证备份。使用相同包名、兼容签名和更高版本覆盖安装；不要先卸载或清除数据。\n签名不匹配时请停止。测试版与正式版不能互相覆盖。\n应用不联网检查更新，不会自动下载代码。",14);
+            text(page,"版本与更新",22);text(page,"当前版本：日课 "+BuildConfig.VERSION_NAME,16);
+            if(BuildConfig.DEBUG)text(page,"体验测试版，与 GitHub 正式版独立安装。",14);
+            TextView result=text(page,updateMessage,16);result.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+            button(page,updateRequest==null?"检查更新":"正在检查…",this::checkForUpdates).setEnabled(updateRequest==null);
+            if(latestRelease!=null&&latestRelease.apkUrl!=null&&UpdateChecker.compareVersions(latestRelease.version,BuildConfig.VERSION_NAME)>=0)
+                button(page,"下载 v"+latestRelease.version+" APK",()->openUpdatePage(latestRelease.apkUrl));
+            button(page,"前往 GitHub 下载最新版",()->openUpdatePage(UpdateChecker.LATEST_PAGE));
+            text(page,"仅点击“检查更新”时联网获取正式版本信息，不上传记录，也不会自动下载或安装。",14);
+            text(page,"更新时直接覆盖安装，保留本机记录。建议提前导出并验证备份。",14);
         }
+    }
+    private void openUpdatePage(String url){
+        try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}
+        catch(android.content.ActivityNotFoundException e){toast("未找到可打开 GitHub 的浏览器，请先安装或启用浏览器。");}
+    }
+    private void checkForUpdates(){
+        if(!unlocked()||updateRequest!=null)return;
+        UpdateChecker.Request request=updateRequestFactory.get();updateRequest=request;
+        latestRelease=null;updateMessage="正在检查 GitHub 最新正式版本…";
+        long token=generation;showApp();
+        if(updateWorker==null)updateWorker=Executors.newSingleThreadExecutor();
+        updateTask=updateWorker.submit(()->{
+            UpdateChecker.Release release=null;String message;
+            try{release=request.load();message=release.message(BuildConfig.VERSION_NAME);}
+            catch(UpdateChecker.CheckException e){message=e.getMessage();}
+            catch(Exception e){message="检查失败，请检查网络后重试，或前往 GitHub 查看。";}
+            UpdateChecker.Release result=release;String status=message;
+            runOnUiThread(()->{
+                if(token!=generation||updateRequest!=request||!unlocked()||isFinishing())return;
+                updateRequest=null;updateTask=null;latestRelease=result;updateMessage=status;
+                if(tab==6&&"version".equals(maintenance))showApp();
+            });
+        });
     }
     private void pick(int action){
         if(action==EXPORT&&deviceMode){requireBackupPassword();return;}

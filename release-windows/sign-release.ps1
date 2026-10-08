@@ -197,7 +197,7 @@ try {
         ('APK SHA-256: ' + (Get-FileHash -LiteralPath $rikePendingApk -Algorithm SHA256).Hash.ToLowerInvariant()),
         ('Signer certificate SHA-256: ' + $rikeFingerprint),
         'Source: Android 0.6.6; exact build metadata in BUILD-INFO.json',
-        'Release build: no INTERNET permission, no debuggable flag; input hash pinned.',
+        'Release build: no debuggable flag; input hash pinned. Permissions are documented in the source manifest.',
         'Passwords and private keys are not included in this receipt.',
         '',
         $rikeVerifyText

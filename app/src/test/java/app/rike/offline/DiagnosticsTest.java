@@ -64,7 +64,7 @@ public class DiagnosticsTest {
         VaultCrypto.Created keys=VaultCrypto.create("synthetic-diagnostics-password".toCharArray());
         JSONObject data=Records.empty();data.getJSONObject("drafts").put("secret","SYNTHETIC-PRIVATE-DRAFT");
         VaultStore store=new VaultStore(a);store.write(VaultCrypto.encrypt(keys.session,data.toString().getBytes(StandardCharsets.UTF_8)));
-        byte[] before=store.read();set(a,"session",keys.session);set(a,"data",data);set(a,"tab",4);call(a,"showApp");
+        byte[] before=store.read();set(a,"session",keys.session);set(a,"data",data);set(a,"tab",6);call(a,"showApp");
         Diagnostics diagnostics=(Diagnostics)get(a,"diagnostics");diagnostics.record(Diagnostics.Code.STORAGE_IO);
         String expected=diagnostics.report();button(a.getWindow().getDecorView(),"查看本地诊断").performClick();
         AlertDialog preview=ShadowAlertDialog.getLatestAlertDialog();preview.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
