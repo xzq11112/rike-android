@@ -33,10 +33,10 @@ jobs:
           echo "ANDROID_SDK_ROOT=$rike_sdk_dir" >> "$GITHUB_ENV"
       - name: Test and build (no production signing keys)
         run: ./gradlew :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintRelease :app:assembleDebug :app:assembleRelease --no-daemon
-      - name: Check no Internet permission in final release
+      - name: Check manual update permission and non-debuggable release
         run: |
           permissions="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions app/build/outputs/apk/release/app-release-unsigned.apk)"
-          if [[ "$permissions" == *android.permission.INTERNET* ]]; then exit 1; fi
+          if [[ "$permissions" != *android.permission.INTERNET* ]]; then exit 1; fi
           metadata="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/release/app-release-unsigned.apk)"
           if [[ "$metadata" == *application-debuggable* ]]; then exit 1; fi
       - name: Preserve synthetic test and lint reports even on failure

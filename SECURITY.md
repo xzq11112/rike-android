@@ -1,3 +1,11 @@
+# 0.6.7 / versionCode 20 — 手动检查更新的联网边界（2026-10-08）
+
+此节取代下方历史版本中“无 INTERNET 权限”的描述。v0.6.7 增加 INTERNET，仅用户在设置 → 维护 → 版本与更新点击“检查更新”时，以匿名 HTTPS GET 读取固定 GitHub 官方仓库的 latest release 元数据。GitHub 会接收普通网络连接信息（如 IP）；请求不包含资料、密码、诊断、设备标识或已安装版本。无自动检查、后台服务、云端同步或遥测。
+
+UpdateChecker 不持有 Context、资料库或会话。连接超时 8 秒、读取超时 10 秒，响应上限 512 KiB，不跟随重定向；草稿、预发布及无法识别的版本拒绝比较。APK 链接仅接受官方仓库中与版本对应的已上传正式文件，其他链接不打开；缺少 APK 时仍可由用户打开固定最新发布页。下载通过浏览器完成，不自行下载、请求安装权限或执行文件。
+
+检查使用独立线程，不阻塞资料写入。锁屏、切后台或销毁会取消请求并丢弃过期回调；公开检查结果只保存在当前解锁会话内存。版本判断依据发布标签，实际安装仍由 Android 校验包名、版本与签名。加密格式、密钥、备份、FLAG_SECURE 和后台立即清屏不变。
+
 # 0.6.5 / versionCode 18 — 可选密码的本机边界（2026-10-07）
 
 新建资料库可暂不设置密码。DeviceVault 使用不要求用户认证的 Android Keystore AES-GCM 密钥封装资料密钥，文件保存在 noBackupFilesDir；不存储空密码或明文资料。此模式允许使用手机的人直接进入应用，本机密钥不可随备份转移，卸载或清除数据会失去它。
@@ -103,7 +111,7 @@ This is a native Android application with encrypted local storage. It has not un
 
 ## Threat model
 
-The design removes the application's cloud database, remote analytics, remote fonts, WebView, HTTP clients and online AI requests. The current installed application requests only USE_BIOMETRIC, never INTERNET. Private content is encrypted at rest, and backups contain ciphertext.
+The design has no cloud database, remote analytics, remote fonts, WebView or online AI requests. Version 0.6.7 requests USE_BIOMETRIC and INTERNET; the only HTTP client is the explicitly invoked, anonymous GitHub release checker described above. Private content is encrypted at rest, and backups contain ciphertext. Version 0.6.6 has no INTERNET permission.
 
 It does not protect against a compromised/rooted OS, a malicious keyboard/accessibility service, coercion, an unlocked phone observed by another person, external camera capture, malicious software updates, or a weak/known master password. An OS file provider selected by the user can run in another process; EXTRA_LOCAL_ONLY is requested but is not a guarantee against a malicious provider. Export only to trusted offline storage. Do not enable cloud keyboard learning, cloud clipboard, phone migration utilities, or vendor backup for private data.
 
