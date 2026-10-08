@@ -1,4 +1,4 @@
-# Local release signing only. Passwords are entered into the official Java tools.
+﻿# Local release signing only. Passwords are entered into the official Java tools.
 # This script never receives, stores, uploads or logs a signing password.
 param([switch]$CorrectAlias)
 
@@ -7,7 +7,7 @@ Set-StrictMode -Version 2
 
 $rikePackage = 'app.rike.offline'
 $rikeVersion = '0.6.6'
-$rikeInputHash = 'f311e3b770412803347f189abe6a743d5fe6c0161ac26436fb9d7a0d45b8135f'
+$rikeInputHash = '981a9b9038aac1c005837bab950a0a6448251ed795196fa603c5d3ed6d8247a8'
 $rikeToolHash = '00ef9948f843fe395d2440ae3ef41405b8040a6d5d46493bd1902ac0ee6deae7'
 $rikeInput = Join-Path $PSScriptRoot 'rike-0.6.6-release-unsigned.apk'
 $rikeTool = Join-Path $PSScriptRoot 'apksigner.jar'

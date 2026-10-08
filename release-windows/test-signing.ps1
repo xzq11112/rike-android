@@ -1,4 +1,4 @@
-# Synthetic Windows PowerShell 5.1 acceptance; no real key or password is used.
+﻿# Synthetic Windows PowerShell 5.1 acceptance; no real key or password is used.
 param([Parameter(Mandatory=$true)][string]$Apk, [Parameter(Mandatory=$true)][string]$Signer)
 $ErrorActionPreference='Stop'
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Run with Windows PowerShell 5.1.' }
