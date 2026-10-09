@@ -772,8 +772,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LocalDate day=todayDate();PracticeStats stats=index().stats;
         TextView dayLabel=text(page,day.toString(),12);themeUpdates.put(dayLabel,()->dayLabel.setTextColor(accent()));dayLabel.setTextColor(accent());
         dayLabel.setPadding(0,0,0,dp(2));TextView todayHeading=text(page,"今日功课",24);todayHeading.setPadding(0,0,0,dp(2));TextView motto=text(page,"不争一时之速，只记每日之功。",12);motto.setPadding(0,0,0,dp(6));
-        LinearLayout first=row(page);webStat(first,"今日时长",stats.todayMinutes+" 分钟",index().today.size()+" 次记录");webStat(first,"近 7 天",stats.weekMinutes+" 分钟","含今天");
-        LinearLayout second=row(page);webStat(second,"累计时长",stats.totalMinutes+" 分钟",stats.totalCount+" 次练习");webStat(second,"连续打卡",stats.streak+" 天","今日或昨日仍可续上");
+        LinearLayout first=row(page);webStat(first,"今日时长",stats.todayMinutes+" 分钟",index().today.size()+" 次记录");webStat(first,"近 7 天",PracticeStats.formatMinutes(stats.weekMinutes),"含今天\n平均每天 "+PracticeStats.formatMinutes(stats.weekAverageMinutes));
+        LinearLayout second=row(page);webStat(second,"累计时长",PracticeStats.formatMinutes(stats.totalMinutes),stats.totalCount+" 次练习\n平均每天 "+PracticeStats.formatMinutes(stats.totalAverageMinutes));webStat(second,"连续打卡",stats.streak+" 天","今日或昨日仍可续上");
         LinearLayout form=recordCard();form.setPadding(dp(12),dp(8),dp(12),dp(12));
         TextView formTitle=text(form,"记一课",18);formTitle.setPadding(0,0,0,dp(2));TextView formHint=text(form,"选类型，定时长，立即落笔",12);formHint.setPadding(0,0,0,dp(4));
         JSONObject d=draft("checkIn");String[] type={d.optString("typeId")},date={d.optString("date",day.toString())},dateMode={d.optString("dateMode",d.has("date")?"legacy":"today")};
