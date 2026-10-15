@@ -4,6 +4,14 @@ import java.util.concurrent.*;
 import android.os.Looper;
 import org.robolectric.Shadows;
 final class TestWork {
+    /** UI regressions use synthetic update failures; no test makes real update requests. */
+    static MainActivity offline(MainActivity a){
+        try{Field f=MainActivity.class.getDeclaredField("updateRequestFactory");f.setAccessible(true);
+            f.set(a,(java.util.function.Supplier<UpdateChecker.Request>)()->new UpdateChecker.Request(){
+                @Override UpdateChecker.Release load()throws java.io.IOException{throw new java.io.IOException("synthetic offline");}
+            });return a;
+        }catch(ReflectiveOperationException e){throw new AssertionError(e);}
+    }
     static Object get(MainActivity a,String name)throws Exception{Field f=MainActivity.class.getDeclaredField(name);f.setAccessible(true);return f.get(a);}
     static void drain(MainActivity a)throws Exception{for(int i=0;i<6;i++){((ExecutorService)get(a,"crypto")).submit(()->{}).get(30,TimeUnit.SECONDS);Shadows.shadowOf(Looper.getMainLooper()).idle();}}
     static void flush(MainActivity a)throws Exception{VaultWriter w=(VaultWriter)get(a,"writer");if(w!=null)w.flushSoon();drain(a);}

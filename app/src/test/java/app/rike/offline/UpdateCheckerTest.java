@@ -13,8 +13,29 @@ public class UpdateCheckerTest {
     static JSONObject release(String version)throws Exception {
         String file="rike-"+version+"-release.apk";
         return new JSONObject().put("tag_name","v"+version).put("draft",false).put("prerelease",false)
+            .put("html_url",UpdateChecker.RELEASE_PREFIX+"v"+version)
             .put("assets",new JSONArray().put(new JSONObject().put("name",file).put("state","uploaded").put("size",123)
                 .put("browser_download_url","https://github.com/xzq11112/rike-android/releases/download/v"+version+"/"+file)));
+    }
+    @Test public void onlyAcceptsExactVersionPage()throws Exception {
+        for(String url:new String[]{UpdateChecker.LATEST_PAGE,"http://github.com/xzq11112/rike-android/releases/tag/v0.6.7",
+            UpdateChecker.RELEASE_PREFIX+"v0.6.8",UpdateChecker.RELEASE_PREFIX+"v0.6.7?x=1",
+            "https://github.com.evil.example/xzq11112/rike-android/releases/tag/v0.6.7",
+            "https://evil@github.com/xzq11112/rike-android/releases/tag/v0.6.7",UpdateChecker.RELEASE_PREFIX+"%760.6.7"}) {
+            assertThrows(UpdateChecker.CheckException.class,()->UpdateChecker.parse(release("0.6.7").put("html_url",url).toString()));
+        }
+        assertThrows(UpdateChecker.CheckException.class,()->{JSONObject json=release("0.6.7");json.remove("html_url");UpdateChecker.parse(json.toString());});
+    }
+    @Test public void highlightsAreBoundedPlainTextFromTheirOwnSection()throws Exception {
+        String body="开头不能显示\n## 更新亮点\n- 示例一\n* 示例二\n\n## 其他说明\nFull Changelog: private";
+        UpdateChecker.Release parsed=UpdateChecker.parse(release("0.6.7").put("body",body).toString());
+        assertEquals("• 示例一\n• 示例二",parsed.highlights);assertEquals("v0.6.7",parsed.tag);
+        for(String text:new String[]{"","## 其他说明\n- wrong","## 更新亮点\n## 其他说明\nnone",
+            "## 更新亮点\n<script>bad</script>","## 更新亮点\n[click](https://evil.example)",
+            "## 更新亮点\n"+new String(new char[241]).replace('\0','a'),
+            "## 更新亮点\n- a\n- b\n- c\n- d\n- e\n- f\n- g\n- h\n- i"})
+            assertEquals(UpdateChecker.FALLBACK_HIGHLIGHTS,UpdateChecker.highlights(text));
+        assertEquals("• 示例",UpdateChecker.highlights("## 更新亮点\n1. 示例\n# 其他说明\nprivate"));
     }
     @Test public void comparesNumbersAndDoesNotOfferDowngrades()throws Exception {
         assertTrue(UpdateChecker.compareVersions("0.6.10","0.6.9")>0);

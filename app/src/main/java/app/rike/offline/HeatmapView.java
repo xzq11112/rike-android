@@ -29,7 +29,7 @@ final class HeatmapView extends View {
     void theme(boolean dark){this.dark=dark;invalidate();}
     void markers(String label){markerLabel=label;setContentDescription("选择日期，有"+label+"的日期会着色");}
     int cellColor(int index){
-        long minutes=days.get(index).minutes;
+        double minutes=days.get(index).minutes;
         return markerLabel!=null&&minutes>0?(dark?0xffd16b5e:0xffa13d32):PracticeHeatmap.color(minutes,dark);
     }
     private float height(){return (calendar?48:14)*density;}
@@ -56,7 +56,7 @@ final class HeatmapView extends View {
         int move=key==android.view.KeyEvent.KEYCODE_DPAD_LEFT?-1:key==android.view.KeyEvent.KEYCODE_DPAD_RIGHT?1:key==android.view.KeyEvent.KEYCODE_DPAD_UP?-columns:key==android.view.KeyEvent.KEYCODE_DPAD_DOWN?columns:0;
         if(move!=0){focused=Math.max(0,Math.min(days.size()-1,(focused<0?0:focused)+move));invalidate();return true;}return super.onKeyDown(key,e);
     }
-    private String label(int i){PracticeHeatmap.Day d=days.get(i);return markerLabel==null?d.date+"，实际练习 "+d.minutes+" 分钟":d.date+(d.minutes>0?"，有":"，无")+markerLabel;}
+    private String label(int i){PracticeHeatmap.Day d=days.get(i);return markerLabel==null?d.date+"，有效练习 "+Records.decimal(d.minutes)+" 分钟":d.date+(d.minutes>0?"，有":"，无")+markerLabel;}
     private void event(int i,int type){AccessibilityManager m=(AccessibilityManager)getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);if(!m.isEnabled()||getParent()==null)return;AccessibilityEvent e=AccessibilityEvent.obtain(type);e.setPackageName(getContext().getPackageName());e.setClassName("android.widget.Button");e.setSource(this,i);e.setContentDescription(label(i));getParent().requestSendAccessibilityEvent(this,e);}
     @Override public boolean dispatchHoverEvent(MotionEvent e){
         AccessibilityManager m=(AccessibilityManager)getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);

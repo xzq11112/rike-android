@@ -47,6 +47,29 @@ public final class Records {
         try { int n = Integer.parseInt(value); if (n > 0 && n <= 1440) return n; } catch (Exception ignored) { }
         throw new IllegalArgumentException("时长需为 1–1440 的整数分钟");
     }
+    public static double multiplier(String value) {
+        try {
+            java.math.BigDecimal n = new java.math.BigDecimal(value.trim());
+            if (n.signum() > 0 && n.compareTo(java.math.BigDecimal.TEN) <= 0 && n.stripTrailingZeros().scale() <= 2)
+                return n.doubleValue();
+        } catch (Exception ignored) { }
+        throw new IllegalArgumentException("倍率需为 0.01–10，最多两位小数");
+    }
+    public static double multiplier(JSONObject row) {
+        return row.has("durationMultiplier") ? multiplier(row.opt("durationMultiplier").toString()) : 1;
+    }
+    public static long effectiveHundredths(JSONObject row) {
+        return java.math.BigDecimal.valueOf(row.optInt("durationMinutes"))
+            .multiply(java.math.BigDecimal.valueOf(multiplier(row))).movePointRight(2).longValueExact();
+    }
+    public static double effectiveMinutes(JSONObject row) { return effectiveHundredths(row) / 100.0; }
+    public static String decimal(double value) {
+        return java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
+    public static String durationLabel(JSONObject row) {
+        String raw = row.optInt("durationMinutes") + " 分钟";
+        return multiplier(row) == 1 ? raw : raw + " × " + decimal(multiplier(row)) + " = " + decimal(effectiveMinutes(row)) + " 分钟";
+    }
     private static void string(JSONObject r, String key, int max, boolean required) throws JSONException {
         if (r.isNull(key) && !required) return;
         Object value = r.get(key);
@@ -56,11 +79,11 @@ public final class Records {
     public static void validateRecord(String entity, JSONObject r) throws JSONException {
         string(r, "id", 200, true);
         switch (entity) {
-            case "practiceType": string(r, "name", 60, true); break;
+            case "practiceType": string(r, "name", 60, true); multiplier(r); break;
             case "durationPreset": minutes(r.get("minutes").toString()); string(r, "label", 60, false); break;
             case "checkIn":
                 date(r.getString("practiceDate")); string(r, "practiceTypeName", 60, true);
-                minutes(r.get("durationMinutes").toString()); string(r, "note", 50000, false); break;
+                minutes(r.get("durationMinutes").toString()); multiplier(r); string(r, "note", 50000, false); break;
             case "journal": date(r.getString("journalDate")); string(r, "content", 50000, true); break;
             case "dream":
                 date(r.getString("sleepDate")); string(r, "content", 50000, true); string(r, "associations", 50000, false);

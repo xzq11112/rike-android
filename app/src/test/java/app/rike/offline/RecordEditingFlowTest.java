@@ -35,11 +35,11 @@ public class RecordEditingFlowTest {
     private static AlertDialog edit(MainActivity a){TestWork.navigate(a,1);click(a.getWindow().getDecorView(),"编辑这次练习");return ShadowAlertDialog.getLatestAlertDialog();}
     private static List<EditText> fields(AlertDialog d){return TestWork.views(d.getWindow().getDecorView(),EditText.class);}
     @Test public void cancelWithNoChangesClosesImmediately()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{open(a,data());AlertDialog d=edit(a);d.getButton(-2).performClick();assertFalse(d.isShowing());}finally{c.pause().stop().destroy();}
     }
     @Test public void cancelAndSystemCancelProtectChangesAndKeepOriginalBytes()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             open(a,data());byte[] before=new VaultStore(a).read();AlertDialog d=edit(a);fields(d).get(1).setText("SYNTHETIC-EDIT");
             d.getButton(-2).performClick();AlertDialog confirm=ShadowAlertDialog.getLatestAlertDialog();assertNotSame(d,confirm);assertTrue(d.isShowing());
@@ -48,11 +48,11 @@ public class RecordEditingFlowTest {
         }finally{c.pause().stop().destroy();}
     }
     @Test public void revertingChangesDoesNotRequireConfirmation()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{open(a,data());AlertDialog d=edit(a);fields(d).get(0).setText("30");fields(d).get(0).setText("20");d.cancel();assertFalse(d.isShowing());}finally{c.pause().stop().destroy();}
     }
     @Test public void failedSaveKeepsInputAndCancellationProtectionForRetry()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             open(a,data());VaultStore original=new VaultStore(a);byte[] before=original.read();
             VaultStore failing=new VaultStore(a){@Override public void write(byte[] bytes)throws java.io.IOException{throw new java.io.IOException("synthetic failure");}};
@@ -64,7 +64,7 @@ public class RecordEditingFlowTest {
         }finally{c.pause().stop().destroy();}
     }
     @Test public void editingDateOutsideRecentRangeKeepsSavedRecordVisible()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             open(a,data());AlertDialog d=edit(a);LocalDate target=LocalDate.now().minusDays(40);
             click(d.getWindow().getDecorView(),"练习日期 · "+LocalDate.now());AlertDialog calendar=ShadowAlertDialog.getLatestAlertDialog();TestWork.chooseCalendarMonth(calendar,java.time.YearMonth.from(target));
@@ -76,7 +76,7 @@ public class RecordEditingFlowTest {
         }finally{c.pause().stop().destroy();}
     }
     @Test public void pastJournalHeadingAndBackdatedReceiptUseSelectedDay()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             JSONObject data=data();String day=LocalDate.now().minusDays(10).toString();data.getJSONObject("drafts").put("checkIn",new JSONObject().put("typeId","type").put("manual","25").put("date",day).put("dateMode","manual"));
             open(a,data);click(a.getWindow().getDecorView(),"保存练习");TestWork.drain(a);assertNotNull(TestWork.named(a.getWindow().getDecorView(),"练习已补记 · "+day));

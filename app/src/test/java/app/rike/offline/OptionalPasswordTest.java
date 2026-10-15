@@ -115,17 +115,17 @@ public class OptionalPasswordTest {
     @Test public void skipPasswordSavesEncryptedRecordsAndReopensOnNewActivity()throws Exception{
         SyntheticKeys keys=new SyntheticKeys();ActivityController<MainActivity> first=start(keys),second=null;
         try{
-            MainActivity a=first.get();skip(a);saveRecord(a);byte[] file=new VaultStore(a).read();
+            MainActivity a=TestWork.offline(first.get());skip(a);saveRecord(a);byte[] file=new VaultStore(a).read();
             assertFalse(new String(file,StandardCharsets.ISO_8859_1).contains(NOTE));
             assertRecord(decoded(((DeviceVault)TestWork.get(a,"device")).open(file)));
-            close(first);first=null;second=start(keys);MainActivity reopened=second.get();
+            close(first);first=null;second=start(keys);MainActivity reopened=TestWork.offline(second.get());
             assertNotNull(TestWork.get(reopened,"session"));assertTrue((boolean)TestWork.get(reopened,"deviceMode"));assertRecord((JSONObject)TestWork.get(reopened,"data"));
             assertArrayEquals(file,new VaultStore(reopened).read());TestWork.navigate(reopened,1);assertNotNull(TestWork.named(screen(reopened),NOTE));
         }finally{if(second!=null)close(second);if(first!=null)close(first);}
     }
 
     @Test public void oldPasswordVaultDoesNotOpenThroughAnUnrelatedDeviceWrapper()throws Exception{
-        SyntheticKeys keys=new SyntheticKeys();ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).create();MainActivity a=c.get();
+        SyntheticKeys keys=new SyntheticKeys();ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).create();MainActivity a=TestWork.offline(c.get());
         try{
             DeviceVault device=injectDevice(a,keys);VaultCrypto.Created unrelated=VaultCrypto.create("synthetic-unrelated-device".toCharArray());
             try{device.enroll(unrelated.session);}finally{unrelated.session.close();}
@@ -140,7 +140,7 @@ public class OptionalPasswordTest {
     }
 
     @Test public void passwordlessModeCannotEnableFingerprintOrExportAnUnrecoverableBackup()throws Exception{
-        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=c.get();
+        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=TestWork.offline(c.get());
         try{
             skip(a);byte[] before=new VaultStore(a).read();TestWork.navigate(a,5);
             assertNotNull(TestWork.named(screen(a),"设置密码与恢复密钥"));View fingerprint=TestWork.named(screen(a),"启用指纹解锁");assertNotNull(fingerprint);assertFalse(fingerprint.isEnabled());
@@ -155,7 +155,7 @@ public class OptionalPasswordTest {
     }
 
     @Test public void laterPasswordSetupRekeysRecordsAndRequiresReleaseRecoveryConfirmation()throws Exception{
-        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=c.get();
+        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=TestWork.offline(c.get());
         try{
             skip(a);saveRecord(a);DeviceVault device=(DeviceVault)TestWork.get(a,"device");byte[] before=new VaultStore(a).read();
             VaultCrypto.Session old=(VaultCrypto.Session)TestWork.get(a,"session");String rows=((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").toString();
@@ -175,7 +175,7 @@ public class OptionalPasswordTest {
     }
 
     @Test public void cancellingPasswordSetupWhileWorkerIsQueuedDoesNotLeaveTheAppBusy()throws Exception{
-        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=c.get();CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=TestWork.offline(c.get());CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
         try{
             skip(a);byte[] before=new VaultStore(a).read();TestWork.navigate(a,5);click(a,"设置密码与恢复密钥");AlertDialog setup=dialog();enterNewPassword(setup);
             ((ExecutorService)TestWork.get(a,"crypto")).execute(()->{entered.countDown();try{if(!release.await(30,TimeUnit.SECONDS))throw new AssertionError("Synthetic worker gate timed out");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new AssertionError(e);}});
@@ -187,7 +187,7 @@ public class OptionalPasswordTest {
     }
 
     @Test public void firstCiphertextWriteFailureAllowsCreatingAgainWithTheDeviceWrapper()throws Exception{
-        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=c.get();
+        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=TestWork.offline(c.get());
         try{
             FailingStore store=new FailingStore(a);set(a,"store",store);click(a,"暂不设置密码，直接使用");TestWork.drain(a);
             assertFalse(store.exists());assertNull(TestWork.get(a,"session"));assertFalse((boolean)TestWork.get(a,"busy"));
@@ -197,7 +197,7 @@ public class OptionalPasswordTest {
     }
 
     @Test public void failedPasswordRekeyPreservesLocalAccessAndCanBeRetried()throws Exception{
-        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=c.get();
+        ActivityController<MainActivity> c=start(new SyntheticKeys());MainActivity a=TestWork.offline(c.get());
         try{
             skip(a);saveRecord(a);TestWork.navigate(a,2);String draftDay=(String)TestWork.get(a,"journalDate");
             TestWork.views(screen(a),EditText.class).get(0).setText("SYNTHETIC-PRIVATE-DRAFT");TestWork.flush(a);

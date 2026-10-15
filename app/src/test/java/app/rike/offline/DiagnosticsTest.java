@@ -47,7 +47,7 @@ public class DiagnosticsTest {
     }
 
     @Test public void exceptionPayloadNeverEntersReportToastOrLogcat()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         String secret="SYNTHETIC-PRIVATE-BODY-password-content://secret/path";
         Method fail=MainActivity.class.getDeclaredMethod("fail",Exception.class);fail.setAccessible(true);
         for(Exception e:new Exception[]{new IOException(secret),new IllegalArgumentException(secret),new org.json.JSONException(secret),new java.security.GeneralSecurityException(secret)}){
@@ -60,7 +60,7 @@ public class DiagnosticsTest {
     }
 
     @Test public void reportExportRequiresConfirmationPickerAndUnlockAndDoesNotTouchVault()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         VaultCrypto.Created keys=VaultCrypto.create("synthetic-diagnostics-password".toCharArray());
         JSONObject data=Records.empty();data.getJSONObject("drafts").put("secret","SYNTHETIC-PRIVATE-DRAFT");
         VaultStore store=new VaultStore(a);store.write(VaultCrypto.encrypt(keys.session,data.toString().getBytes(StandardCharsets.UTF_8)));

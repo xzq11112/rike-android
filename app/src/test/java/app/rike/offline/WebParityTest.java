@@ -29,7 +29,7 @@ public class WebParityTest {
     private static Button button(View v,String name){if(v instanceof Button&&(name.contentEquals(((Button)v).getText())||name.contentEquals(v.getContentDescription()==null?"":v.getContentDescription())))return (Button)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){Button found=button(((ViewGroup)v).getChildAt(i),name);if(found!=null)return found;}return null;}
     private static List<EditText> inputs(View v){List<EditText> fields=new ArrayList<>();if(v instanceof EditText)fields.add((EditText)v);if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)fields.addAll(inputs(((ViewGroup)v).getChildAt(i)));return fields;}
     @Test public void numericDefaultAndLetterToggleKeepPasswordUnchanged(){
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();View root=a.getWindow().getDecorView();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());View root=a.getWindow().getDecorView();
         EditText p=inputs(root).get(0);assertEquals(InputType.TYPE_CLASS_NUMBER,p.getInputType()&InputType.TYPE_MASK_CLASS);
         p.setText("012345");button(root,"使用字符键盘").performClick();
         assertEquals("012345",p.getText().toString());assertEquals(InputType.TYPE_CLASS_TEXT,p.getInputType()&InputType.TYPE_MASK_CLASS);
@@ -37,7 +37,7 @@ public class WebParityTest {
         assertEquals("synthetic-long-password",p.getText().toString());assertNotNull(p.getTransformationMethod());c.pause().stop().destroy();
     }
     @Test public void legacyDreamDataIsRetainedButHiddenAndHeatmapsStayOnDataPage()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();JSONObject legacy=Records.empty();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject legacy=Records.empty();
         legacy.getJSONArray("practiceTypes").put(new JSONObject().put("id","t").put("name","SYNTHETIC-TYPE"));
         legacy.getJSONArray("durationPresets").put(new JSONObject().put("id","m").put("minutes",30));
         legacy.getJSONArray("checkIns").put(new JSONObject().put("id","c").put("practiceDate",LocalDate.now().toString()).put("practiceTypeName","SYNTHETIC-TYPE").put("durationMinutes",30));
