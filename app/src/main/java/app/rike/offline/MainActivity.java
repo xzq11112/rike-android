@@ -1395,7 +1395,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void showUpdatePrompt(UpdateChecker.Release release){
         LinearLayout layout=column();layout.setPadding(dp(20),dp(12),dp(20),dp(12));
         // All copy scrolls so actions retain space even on small landscape screens with large text.
-        ScrollView details=new ScrollView(this);LinearLayout body=column();details.addView(body);
+        ScrollView details=new ScrollView(this);details.setContentDescription("本次更新说明");LinearLayout body=column();details.addView(body);
         TextView title=text(body,"发现新版本 v"+release.version,22);if(android.os.Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);
         text(body,"当前版本 v"+BuildConfig.VERSION_NAME,14);
         text(body,"本次更新",16);

@@ -104,8 +104,8 @@ public class UpdateFlowTest {
         try {
             AtomicInteger calls=new AtomicInteger();synthetic(a,calls);open(a);set(a,"journalEditing",true);settle(a);
             assertTrue(((java.util.List<?>)TestWork.get(a,"dialogs")).isEmpty());set(a,"journalEditing",false);call(a,"scheduleStartupUpdate");settle(a);
-            AlertDialog d=prompt();View root=d.getWindow().getDecorView();assertEquals(1,TestWork.views(root,ScrollView.class).size());
-            ScrollView copy=TestWork.views(root,ScrollView.class).get(0);named(copy,"发现新版本 v99.0.0");named(copy,UpdateChecker.FALLBACK_HIGHLIGHTS);
+            AlertDialog d=prompt();View root=d.getWindow().getDecorView();
+            ScrollView copy=(ScrollView)named(root,"本次更新说明");named(copy,"发现新版本 v99.0.0");named(copy,UpdateChecker.FALLBACK_HIGHLIGHTS);
             for(String label:new String[]{"查看更新","稍后","跳过此版本"}){View button=named(root,label);assertNull(TestWork.named(copy,label));assertTrue(((android.widget.TextView)button).getMinHeight()>=48*a.getResources().getDisplayMetrics().density);}
             d.cancel();settle(a);assertFalse(d.isShowing());assertEquals(1,calls.get());
         } finally {c.pause().stop().destroy();}
@@ -117,7 +117,7 @@ public class UpdateFlowTest {
                 android.content.res.Configuration config=new android.content.res.Configuration(a.getResources().getConfiguration());config.fontScale=2f;
                 a.getResources().updateConfiguration(config,a.getResources().getDisplayMetrics());set(a,"dark",dark);
                 AtomicInteger calls=new AtomicInteger();synthetic(a,calls);open(a);settle(a);AlertDialog d=prompt();
-                ScrollView copy=TestWork.views(d.getWindow().getDecorView(),ScrollView.class).get(0);View layout=(View)copy.getParent();
+                ScrollView copy=(ScrollView)named(d.getWindow().getDecorView(),"本次更新说明");View layout=(View)copy.getParent();
                 int width=d.getWindow().getAttributes().width,height=d.getWindow().getAttributes().height;
                 layout.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));layout.layout(0,0,width,height);
                 assertTrue("copy has scroll space",copy.getHeight()>0);
