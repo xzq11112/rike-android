@@ -43,7 +43,7 @@ public class DeliveryFlowTest {
         set(a,"pendingAction",action);set(a,"pendingUri",Uri.fromFile(file));call(a,"consumePending");
     }
     @Test public void firstSetupCreatesVaultWithoutRecoveryCeremonyInDebug()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         List<EditText> fields=inputs(a.getWindow().getDecorView());assertEquals(2,fields.size());
         fields.get(0).setText(PASSWORD);fields.get(1).setText(PASSWORD);
         button(a.getWindow().getDecorView(),"建立资料库").performClick();settle(a);
@@ -59,14 +59,14 @@ public class DeliveryFlowTest {
         c.pause().stop().destroy();
     }
     @Test public void filePickerReturnLocksEvenWithoutPause()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();unlock(a,withDream());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());unlock(a,withDream());
         VaultCrypto.Session old=(VaultCrypto.Session)get(a,"session");
         a.onActivityResult(101,Activity.RESULT_OK,new Intent().setData(Uri.parse("content://synthetic/file")));
         assertTrue(old.isClosed());assertNull(get(a,"session"));assertNull(get(a,"data"));
         assertEquals(Uri.parse("content://synthetic/file"),get(a,"pendingUri"));c.pause().stop().destroy();
     }
     @Test public void journalUiSavesSameDayWithoutDuplicate()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();unlock(a,Records.empty());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());unlock(a,Records.empty());
         set(a,"tab",2);call(a,"showApp");
         inputs(a.getWindow().getDecorView()).get(0).setText("first journal");button(a.getWindow().getDecorView(),"保存感悟").performClick();settle(a);
         String first=((JSONObject)get(a,"data")).getJSONArray("journals").getJSONObject(0).getString("createdAt");
@@ -75,7 +75,7 @@ public class DeliveryFlowTest {
         assertEquals("edited journal",d.getJSONArray("journals").getJSONObject(0).getString("content"));assertEquals(first,d.getJSONArray("journals").getJSONObject(0).getString("createdAt"));c.pause().stop().destroy();
     }
     @Test public void exportVerifyRestoreAndWrongPasswordPreserveData()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();unlock(a,withDream());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());unlock(a,withDream());
         File backup=new File(a.getCacheDir(),"synthetic.rike");openBackup(a,backup,103);settle(a);
         byte[] bytes=Files.readAllBytes(backup.toPath());assertArrayEquals(new VaultStore(a).read(),bytes);
         assertFalse(new String(bytes,StandardCharsets.UTF_8).contains("synthetic private dream"));
@@ -99,14 +99,14 @@ public class DeliveryFlowTest {
         c.pause().stop().destroy();
     }
     @Test public void cancellingPasswordChangeKeepsOldPassword()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();unlock(a,withDream());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());unlock(a,withDream());
         byte[] before=new VaultStore(a).read();call(a,"changePassword");AlertDialog d=ShadowAlertDialog.getLatestAlertDialog();
         for(EditText e:inputs(d.getWindow().getDecorView()))e.setText("new-synthetic-password");
         d.getButton(AlertDialog.BUTTON_POSITIVE).performClick();d.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();settle(a);
         assertArrayEquals(before,new VaultStore(a).read());assertNotNull(get(a,"session"));assertFalse((boolean)get(a,"busy"));c.pause().stop().destroy();
     }
     @Test public void pendingPasswordUnlockCannotUnlockAfterPause()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();unlock(a,withDream());call(a,"lock");
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());unlock(a,withDream());call(a,"lock");
         inputs(a.getWindow().getDecorView()).get(0).setText(PASSWORD);Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(550));
         c.pause();settle(a);assertNull(get(a,"session"));assertNull(get(a,"data"));c.stop().destroy();
     }

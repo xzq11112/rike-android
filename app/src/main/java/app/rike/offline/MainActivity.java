@@ -78,6 +78,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private java.util.function.Supplier<UpdateChecker.Request> updateRequestFactory=UpdateChecker.Request::new;
     private UpdateChecker.Release latestRelease;
     private String updateMessage="尚未检查更新";
+    private StartupUpdateFlow startupUpdates=new StartupUpdateFlow();
     private final List<String> typeOrder=new ArrayList<>();
     private boolean orderDirty,historyFromStats;
     private String historyDate,journalFilter;
@@ -101,12 +102,17 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private int accent() { return Color.parseColor(dark ? "#D16B5E" : "#A13D32"); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(null); // Never restore framework plaintext form state.
+        Object retained=getLastNonConfigurationInstance();
+        if(retained instanceof StartupUpdateFlow)startupUpdates=(StartupUpdateFlow)retained;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         store = new VaultStore(this);access=VaultAccess.forPath(new File(getNoBackupFilesDir(),"vault.rike").getAbsolutePath());crypto=access.worker;access.acquire(this); biometric = new BiometricVault(this); device=new DeviceVault(this); dark = getPreferences(MODE_PRIVATE).getBoolean("dark", false);
         if(android.os.Build.VERSION.SDK_INT>=33)modernBack=BackApi33.install(this);
         showLocked();
     }
-    @Override protected void onResume() { super.onResume();access.acquire(this);foreground=true;suppressAutomaticBiometric=false;if(device.enabled()&&!ignoreDeviceWrapper&&!unlocked())openDeviceVault();else startAutomaticBiometric(); }
+    @Override protected void onStart(){super.onStart();startupUpdates.enter();}
+    @Override protected void onStop(){startupUpdates.stop(isChangingConfigurations());super.onStop();}
+    @Override public Object onRetainNonConfigurationInstance(){return startupUpdates;}
+    @Override protected void onResume() { super.onResume();access.acquire(this);foreground=true;suppressAutomaticBiometric=false;if(device.enabled()&&!ignoreDeviceWrapper&&!unlocked())openDeviceVault();else startAutomaticBiometric();scheduleStartupUpdate(); }
     @Override protected void onPause() { foreground=false;lock(); super.onPause(); }
     @Override protected void onSaveInstanceState(Bundle state) { /* no plaintext saved state */ }
     @Override protected void onDestroy() { lock();if(updateWorker!=null)updateWorker.shutdownNow();if(android.os.Build.VERSION.SDK_INT>=33&&modernBack!=null)BackApi33.remove(this,modernBack);diagnostics.clear();diagnosticExport=null;access.release(this);super.onDestroy(); }
@@ -138,6 +144,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         locking = true; generation++; setBusy(false);cancelAutomaticUnlock();
         if(updateRequest!=null){updateRequest.cancel();updateRequest=null;}
         if(updateTask!=null){updateTask.cancel(true);updateTask=null;}
+        startupUpdates.cancel();
         latestRelease=null;updateMessage="尚未检查更新";
         if (biometricCancel != null) { biometricCancel.cancel(); biometricCancel = null; }
         if(biometric!=null&&crypto!=null)crypto.execute(()->{try{biometric.cancelEnrollment();}catch(Exception ignored){}});
@@ -273,7 +280,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         feedback=message;status(message);toast(message);
     }
     private void dialog(AlertDialog d) {
-        dialogs.add(d); d.setOnDismissListener(x->{if(d.getWindow()!=null){wipe(d.getWindow().getDecorView());forgetTheme(d.getWindow().getDecorView());}dialogs.remove(d);});
+        dialogs.add(d); d.setOnDismissListener(x->{if(d.getWindow()!=null){wipe(d.getWindow().getDecorView());forgetTheme(d.getWindow().getDecorView());}dialogs.remove(d);scheduleStartupUpdate();});
         d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);d.getWindow().setBackgroundDrawable(bg(paper())); d.show();
     }
     private android.content.Context dialogContext(){return new ContextThemeWrapper(this,dark?android.R.style.Theme_Material_Dialog_Alert:android.R.style.Theme_Material_Light_Dialog_Alert);}
@@ -295,6 +302,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             waitingControls.clear();
             if(waitingAction!=null&&waitingLabel!=null)waitingAction.setText(waitingLabel);
             waitingAction=null;waitingLabel=null;
+            scheduleStartupUpdate();
         }
     }
     private void gateControls(View v){
@@ -734,9 +742,12 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         renderedRoute=maintenance!=null?8:tab;
         try{switch(tab){case 0:today();break;case 1:history();break;case 2:journals();break;case 3:statistics();break;case 4:backups();break;case 5:settings();break;case 6:maintenancePage();break;}}
         catch(Exception e){fail(e);}
+        // Opening a page does not mean the user started editing its first input.
+        root.setFocusableInTouchMode(true);root.requestFocus();
         ScrollView rendered=contentScroll;int offset=scrollOffsets[renderedRoute];long token=generation;
         rendered.post(()->{if(token==generation&&contentScroll==rendered&&unlocked())rendered.scrollTo(0,offset);});
         if(android.os.SystemClock.elapsedRealtime()-renderStart>=250)diagnostics.record(Diagnostics.Code.PAGE_BUILD_SLOW);
+        scheduleStartupUpdate();
     }
     private ImageButton headerIcon(LinearLayout parent,int kind,String label,Runnable action){
         ImageButton b=new ImageButton(this);ZenIcon icon=new ZenIcon(kind,ink());b.setImageDrawable(icon);b.setPadding(dp(13),dp(13),dp(13),dp(13));b.setContentDescription(label);b.setBackgroundColor(Color.TRANSPARENT);b.setFilterTouchesWhenObscured(true);parent.addView(b,new LinearLayout.LayoutParams(dp(48),dp(48)));
@@ -772,8 +783,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LocalDate day=todayDate();PracticeStats stats=index().stats;
         TextView dayLabel=text(page,day.toString(),12);themeUpdates.put(dayLabel,()->dayLabel.setTextColor(accent()));dayLabel.setTextColor(accent());
         dayLabel.setPadding(0,0,0,dp(2));TextView todayHeading=text(page,"今日功课",24);todayHeading.setPadding(0,0,0,dp(2));TextView motto=text(page,"不争一时之速，只记每日之功。",12);motto.setPadding(0,0,0,dp(6));
-        LinearLayout first=row(page);webStat(first,"今日时长",stats.todayMinutes+" 分钟",index().today.size()+" 次记录");webStat(first,"近 7 天",stats.weekMinutes+" 分钟","含今天");
-        LinearLayout second=row(page);webStat(second,"累计时长",stats.totalMinutes+" 分钟",stats.totalCount+" 次练习");webStat(second,"连续打卡",stats.streak+" 天","今日或昨日仍可续上");
+        LinearLayout first=row(page);webStat(first,"今日时长",Records.decimal(stats.todayMinutes)+" 分钟",index().today.size()+" 次记录");webStat(first,"近 7 天",PracticeStats.formatMinutes(stats.weekMinutes),"含今天 · 平均每天 "+PracticeStats.formatMinutes(stats.weekAverageMinutes));
+        LinearLayout second=row(page);webStat(second,"累计时长",PracticeStats.formatMinutes(stats.totalMinutes),stats.totalCount+" 次练习 · 平均每天 "+PracticeStats.formatMinutes(stats.totalAverageMinutes));webStat(second,"连续打卡",stats.streak+" 天","今日或昨日仍可续上");
         LinearLayout form=recordCard();form.setPadding(dp(12),dp(8),dp(12),dp(12));
         TextView formTitle=text(form,"记一课",18);formTitle.setPadding(0,0,0,dp(2));TextView formHint=text(form,"选类型，定时长，立即落笔",12);formHint.setPadding(0,0,0,dp(4));
         JSONObject d=draft("checkIn");String[] type={d.optString("typeId")},date={d.optString("date",day.toString())},dateMode={d.optString("dateMode",d.has("date")?"legacy":"today")};
@@ -813,8 +824,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 if(Records.find(data,"practiceType",type[0])==null&&!types.isEmpty())type[0]=types.get(0).getString("id");
                 for(JSONObject t:types){
                     String id=t.getString("id");FrameLayout card=optionCard(typeArea);card.setTag(id);LinearLayout body=column();card.addView(body,new FrameLayout.LayoutParams(-2,-2));
-                    Button b=button(body,t.getString("name"),()->{if(managedEntity!=null)return;type[0]=id;for(String k:typeButtons.keySet())selected(typeButtons.get(k),k.equals(id));write.run();});
-                    compactOption(b);typeButtons.put(id,b);selected(b,id.equals(type[0]));
+                    Button b=button(body,t.getString("name")+(Records.multiplier(t)==1?"":" ×"+Records.decimal(Records.multiplier(t))),()->{if("practiceType".equals(managedEntity)){editOption("practiceType",t);return;}if(managedEntity!=null)return;type[0]=id;for(String k:typeButtons.keySet())selected(typeButtons.get(k),k.equals(id));write.run();});
+                    b.setContentDescription(t.getString("name"));compactOption(b);typeButtons.put(id,b);selected(b,id.equals(type[0]));
                     Button x=deleteCorner(card,"practiceType",t,()->{saved("选项已移到已删除");if(refreshPracticeOptions!=null)refreshPracticeOptions.run();});typeDeletes.add(x);
                     float[] touch={0,0};
                     View.OnTouchListener dragTouch=(v,event)->{
@@ -822,10 +833,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                         if(!typeArea.isDragging())return false;
                         if(!unlocked()||busy){typeArea.cancelDrag();b.setPressed(false);v.setPressed(false);return true;}
                         if(event.getActionMasked()==MotionEvent.ACTION_MOVE){typeArea.dragTo(event.getRawX(),event.getRawY());return true;}
-                        if(event.getActionMasked()==MotionEvent.ACTION_UP){List<String> ids=typeArea.finishDrag(true);b.setPressed(false);v.setPressed(false);if(ids!=null)changeAsync(n->Records.orderPracticeTypes(n,ids),()->{saved("练习顺序已保存");if(refreshPracticeOptions!=null)refreshPracticeOptions.run();},()->{diagnostics.record(Diagnostics.Code.ORDER_COMMIT_FAILED);if(refreshPracticeOptions!=null)refreshPracticeOptions.run();});return true;}
+                        if(event.getActionMasked()==MotionEvent.ACTION_UP){List<String> ids=typeArea.finishDrag(true);b.setPressed(false);v.setPressed(false);if(ids!=null)changeAsync(n->Records.orderPracticeTypes(n,ids),()->{saved("练习顺序已保存");if(refreshPracticeOptions!=null)refreshPracticeOptions.run();},()->{diagnostics.record(Diagnostics.Code.ORDER_COMMIT_FAILED);if(refreshPracticeOptions!=null)refreshPracticeOptions.run();});else editOption("practiceType",t);return true;}
                         if(event.getActionMasked()==MotionEvent.ACTION_CANCEL){typeArea.cancelDrag();b.setPressed(false);v.setPressed(false);return true;}return true;
                     };b.setOnTouchListener(dragTouch);x.setOnTouchListener(dragTouch);
-                    b.setOnLongClickListener(v->{if(!busy&&unlocked()){managedEntity="practiceType";showEditing.run();if(touch[0]==0&&touch[1]==0){int[] xy=new int[2];b.getLocationOnScreen(xy);touch[0]=xy[0]+b.getWidth()/2f;touch[1]=xy[1]+b.getHeight()/2f;}typeArea.beginDrag(card,touch[0],touch[1]);b.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}return true;});
+                    b.setOnLongClickListener(v->{if(!busy&&unlocked()){managedEntity="practiceType";showEditing.run();saved("点击练习设置倍率，按住拖动排序");if(touch[0]==0&&touch[1]==0){int[] xy=new int[2];b.getLocationOnScreen(xy);touch[0]=xy[0]+b.getWidth()/2f;touch[1]=xy[1]+b.getHeight()/2f;}typeArea.beginDrag(card,touch[0],touch[1]);b.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}return true;});
                     x.setOnLongClickListener(v->b.performLongClick());
                 }
                 FrameLayout add=optionCard(typeArea);LinearLayout addBody=column();add.addView(addBody,new FrameLayout.LayoutParams(-2,-2));Button plus=button(addBody,"＋",()->editOption("practiceType",null));compactOption(plus);plus.setContentDescription("添加练习类型");
@@ -854,7 +865,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 if("today".equals(dateMode[0]))date[0]=todayDate().toString();
                 try{Records.date(date[0]);}catch(IllegalArgumentException e){saved("请通过补记日期重新选择有效日期。");return;}
                 if(note.length()>50000){note.setError("备注最多 50000 个字符。");return;}
-                JSONObject r=object("id",Records.id(),"practiceTypeId",type[0],"practiceTypeName",t.getString("name"),"practiceDate",date[0],"note",note.getText().toString()).put("durationMinutes",minutes);
+                JSONObject r=object("id",Records.id(),"practiceTypeId",type[0],"practiceTypeName",t.getString("name"),"practiceDate",date[0],"note",note.getText().toString()).put("durationMinutes",minutes).put("durationMultiplier",Records.multiplier(t));
                 String savedDay=date[0];
                 changeAsync(n->{r.put("createdAt",Records.now());Records.upsert(n,"checkIn",r);n.getJSONObject("drafts").remove("checkIn");},()->{managedEntity=null;saved(savedDay.equals(todayDate().toString())?"今日一课，已记下":"练习已补记 · "+savedDay);scrollOffsets[0]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);showApp();});
             }catch(Exception e){fail(e);}
@@ -868,9 +879,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(busy)return;managedEntity=null;typeOrder.clear();orderDirty=false;after.run();
     }
     private void statistics()throws Exception{
-        text(page,"数据",28);PracticeStats stats=index().stats;text(page,"练习统计",20);text(page,"近 7 天 "+stats.weekMinutes+" 分钟 · 连续 "+stats.streak+" 天\n累计 "+stats.totalMinutes+" 分钟 · "+stats.totalCount+" 次",16);heatmaps(stats.minutesByDate);
+        text(page,"数据",28);PracticeStats stats=index().stats;text(page,"练习统计",20);text(page,"近 7 天 "+Records.decimal(stats.weekMinutes)+" 分钟 · 连续 "+stats.streak+" 天\n累计 "+Records.decimal(stats.totalMinutes)+" 分钟 · "+stats.totalCount+" 次",16);heatmaps(stats.minutesByDate);
     }
-    private void heatmaps(Map<String,Long> minutes){
+    private void heatmaps(Map<String,? extends Number> minutes){
         text(page,"练习热力图",23);
         LinearLayout month=row(page);text(month,"月",20);
         Button monthPick=button(month,heatmapMonth.getYear()+" 年 "+heatmapMonth.getMonthValue()+" 月 ▾",this::chooseHeatmapMonth);
@@ -879,15 +890,15 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         periodSummary(monthly);heatmapGrid(monthly,7,true);
         LinearLayout annual=row(page);text(annual,"全年",20);Button year=button(annual,heatmapYear+" 年 ▾",this::chooseHeatmapYear);year.setContentDescription("选择统计年份");
         List<PracticeHeatmap.Day> yearly=PracticeHeatmap.year(heatmapYear,minutes);periodSummary(yearly);heatmapGrid(yearly,19,false);
-        text(page,"黄色越浓，实际练习时长越长。",13);
+        text(page,"黄色越浓，折算后的有效练习时长越长。",13);
         int[] colors=new int[240];for(int i=0;i<colors.length;i++)colors[i]=PracticeHeatmap.color(i+1,dark);
         View legend=new View(this);legend.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,colors));legend.setContentDescription("连续黄色色阶：15、30、60、120、240 分钟；240 分钟及以上为最浓黄色");
         page.addView(legend,new LinearLayout.LayoutParams(-1,dp(16)));
         text(page,"参考：15 · 30 · 60 · 120 · 240 分钟\n灰色为 0 分钟；1–240 分钟连续渐变，240 分钟以上保持最浓黄色。",13);
     }
     private void periodSummary(List<PracticeHeatmap.Day> days){
-        long sum=0;int active=0;for(PracticeHeatmap.Day d:days){sum+=d.minutes;if(d.minutes>0)active++;}
-        text(page,"实际练习 "+sum+" 分钟 · "+active+" 天",14);
+        double sum=0;int active=0;for(PracticeHeatmap.Day d:days){sum+=d.minutes;if(d.minutes>0)active++;}
+        text(page,"有效练习 "+Records.decimal(sum)+" 分钟 · "+active+" 天",14);
     }
     private NumberPicker yearPicker(LinearLayout parent,int value){
         NumberPicker picker=new NumberPicker(dialogContext());picker.setMinValue(1);picker.setMaxValue(9999);picker.setValue(value);picker.setWrapSelectorWheel(false);picker.setSaveEnabled(false);
@@ -918,7 +929,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         String chosen=journal?journalFilter:historyDate;text(page,chosen==null?"最近 7 天 · 含今天":chosen,14);
         LinearLayout controls=row(page);button(controls,"选择日期",()->dateCalendar(journal));if(chosen!=null)button(controls,"最近 7 天",()->{if(journal){journalFilter=null;journalPage=0;}else{historyDate=null;historyPage=0;}showApp();});
     }
-    private Map<String,Long> indexMarks(boolean journal){
+    private Map<String,? extends Number> indexMarks(boolean journal){
         try{return journal?index().journalDays:index().stats.minutesByDate;}catch(Exception e){fail(e);return Collections.emptyMap();}
     }
     private void dateCalendar(boolean journal){
@@ -942,7 +953,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         year.setOnValueChangedListener((p,old,next)->{for(Map.Entry<Integer,Button> b:buttons.entrySet())selected(b.getValue(),next==selected.getYear()&&b.getKey()==selected.getMonthValue());});
         dialog(d);
     }
-    private void chooseDay(String chosen,Map<String,Long> marks,String marker,java.util.function.Consumer<LocalDate> accept){
+    private void chooseDay(String chosen,Map<String,? extends Number> marks,String marker,java.util.function.Consumer<LocalDate> accept){
         if(!unlocked()||busy)return;
         long token=generation;
         LocalDate initial;try{initial=chosen==null?todayDate():LocalDate.parse(chosen);}catch(Exception e){initial=todayDate();}
@@ -963,7 +974,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             button(calendar,"按日期列表选择",()->{
                 LinearLayout list=column();list.setPadding(dp(12),dp(8),dp(12),dp(12));ScrollView listScroll=new ScrollView(this);listScroll.setSaveEnabled(false);listScroll.addView(list);
                 AlertDialog dates=new AlertDialog.Builder(dialogContext()).setTitle(month[0].getYear()+" 年 "+month[0].getMonthValue()+" 月").setView(listScroll).setNegativeButton("返回月历",null).create();
-                for(int day=1;day<=month[0].lengthOfMonth();day++){LocalDate target=month[0].atDay(day);Button b=button(list,day+" 日"+(marks.getOrDefault(target.toString(),0L)>0?" · 有"+marker:""),()->{if(!unlocked()||token!=generation)return;dates.dismiss();d.dismiss();accept.accept(target);});b.setContentDescription(target+"，"+(marks.getOrDefault(target.toString(),0L)>0?"有":"无")+marker);}
+                for(int day=1;day<=month[0].lengthOfMonth();day++){LocalDate target=month[0].atDay(day);Button b=button(list,day+" 日"+((marks.containsKey(target.toString())&&marks.get(target.toString()).doubleValue()>0)?" · 有"+marker:""),()->{if(!unlocked()||token!=generation)return;dates.dismiss();d.dismiss();accept.accept(target);});b.setContentDescription(target+"，"+((marks.containsKey(target.toString())&&marks.get(target.toString()).doubleValue()>0)?"有":"无")+marker);}
                 dialog(dates);
             });
         };
@@ -978,12 +989,12 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LinkedHashMap<String,List<JSONObject>> groups=new LinkedHashMap<>();for(JSONObject r:rows)groups.computeIfAbsent(r.optString("practiceDate"),k->new ArrayList<>()).add(r);
         List<String> days=new ArrayList<>(groups.keySet());historyPage=Math.min(historyPage,Math.max(0,(days.size()-1)/PAGE_SIZE));
         for(String day:days.subList(historyPage*PAGE_SIZE,Math.min((historyPage+1)*PAGE_SIZE,days.size()))){
-            List<JSONObject> entries=groups.get(day);LinearLayout card=recordCard();LinearLayout title=row(card);TextView date=text(title,day,18);date.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));long subtotal=0;for(JSONObject r:entries)subtotal+=r.optInt("durationMinutes");text(title,"小计 "+subtotal+" 分钟",14);text(card,entries.size()+" 次练习",12);
+            List<JSONObject> entries=groups.get(day);LinearLayout card=recordCard();LinearLayout title=row(card);TextView date=text(title,day,18);date.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));long subtotal=0;for(JSONObject r:entries)subtotal+=Records.effectiveHundredths(r);text(title,"小计 "+Records.decimal(subtotal/100.0)+" 分钟",14);text(card,entries.size()+" 次练习",12);
             for(JSONObject r:entries){
                 LinearLayout line=row(card);line.setGravity(Gravity.CENTER_VERTICAL);LinearLayout body=column();line.addView(body,new LinearLayout.LayoutParams(0,-2,1));text(body,r.optString("practiceTypeName"),16);
                 if(Records.find(data,"practiceType",r.optString("practiceTypeId"))==null)text(body,"历史类型",11);
                 String note=Records.checkInNote(r);if(!note.isEmpty())text(body,note,14);
-                text(line,r.optInt("durationMinutes")+" 分钟",14);headerIcon(line,ZenIcon.EDIT,"编辑这次练习",()->editCheckIn(r));headerIcon(line,ZenIcon.DELETE,"删除打卡记录",()->remove("checkIn",r.optString("id")));
+                text(body,Records.durationLabel(r),14);headerIcon(line,ZenIcon.EDIT,"编辑这次练习",()->editCheckIn(r));headerIcon(line,ZenIcon.DELETE,"删除打卡记录",()->remove("checkIn",r.optString("id")));
             }
         }
         if(rows.isEmpty())text(page,"这段时间尚无练习记录。",16);
@@ -1062,12 +1073,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 try{
                     List<JSONObject> options=Records.options(data,"practiceType");String[] names=new String[options.size()+1];names[0]="保留原类型 · "+old.optString("practiceTypeName");for(int i=0;i<options.size();i++)names[i+1]=options.get(i).optString("name");
                     AlertDialog pick=new AlertDialog.Builder(dialogContext()).setTitle("练习类型").setItems(names,(x,i)->{
-                        try{if(i==0){if(old.has("practiceTypeId"))edited.put("practiceTypeId",old.get("practiceTypeId"));else edited.remove("practiceTypeId");edited.put("practiceTypeName",old.getString("practiceTypeName"));}
-                        else{JSONObject option=options.get(i-1);edited.put("practiceTypeId",option.getString("id")).put("practiceTypeName",option.getString("name"));}typeButton[0].setText(edited.optString("practiceTypeName"));}catch(Exception e){fail(e);}
+                        try{if(i==0){if(old.has("practiceTypeId"))edited.put("practiceTypeId",old.get("practiceTypeId"));else edited.remove("practiceTypeId");edited.put("practiceTypeName",old.getString("practiceTypeName")).put("durationMultiplier",Records.multiplier(old));}
+                        else{JSONObject option=options.get(i-1);edited.put("practiceTypeId",option.getString("id")).put("practiceTypeName",option.getString("name")).put("durationMultiplier",option.optString("id").equals(old.optString("practiceTypeId"))?Records.multiplier(old):Records.multiplier(option));}typeButton[0].setText(edited.optString("practiceTypeName"));}catch(Exception e){fail(e);}
                     }).setNegativeButton("取消",null).create();dialog(pick);
                 }catch(Exception e){fail(e);}
             });
             Button[] dateButton=new Button[1];dateButton[0]=button(form,"练习日期 · "+selectedDay[0],()->chooseDay(selectedDay[0],indexMarks(false),"练习记录",day->{selectedDay[0]=day.toString();dateButton[0].setText("练习日期 · "+selectedDay[0]);}));
+            text(form,"输入原始总时长；保留原类型时沿用记录倍率 ×"+Records.decimal(Records.multiplier(old))+"，换类型使用新类型倍率。",13);
             EditText minutes=field(form,"时长（分钟）",old.optString("durationMinutes"),false,false);minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
             EditText note=field(form,"备注（可选）",Records.checkInNote(old),true,false);
             ScrollView scroll=new ScrollView(this);scroll.setSaveEnabled(false);scroll.addView(form);
@@ -1111,6 +1123,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         boolean type=entity.equals("practiceType");
         EditText value=field(form,type?"练习类型名称":"常用分钟数",old==null?"":type?old.optString("name"):old.optString("minutes"),false,false);
         if(!type)value.setInputType(InputType.TYPE_CLASS_NUMBER);
+        EditText rate=type?field(form,"练习倍率",old==null?"1":Records.decimal(Records.multiplier(old)),false,false):null;
+        if(type){rate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);text(form,"有效时长 = 输入总时长 × 倍率。默认 1，支持 0.01–10，最多两位小数；仅影响之后的打卡。",13);}
         AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(old==null?"新增":"修改").setView(form).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(busy||!unlocked())return;
@@ -1119,22 +1133,22 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 if(type&&(label.isEmpty()||label.length()>60)){value.setError("请填写名称，最多 60 个字符。");return;}
                 if(!type){try{Records.minutes(label);}catch(IllegalArgumentException e){value.setError("请输入 1–1440 的整数分钟。");return;}}
                 JSONObject r=old==null?object("id",Records.id(),"createdAt",Records.now()):Records.copy(old);
-                if(type)r.put("name",label);else r.put("minutes",Records.minutes(label)).put("label",label+" 分钟");
+                if(type){double multiplier;try{multiplier=Records.multiplier(rate.getText().toString());}catch(IllegalArgumentException e){rate.setError(e.getMessage());return;}r.put("name",label).put("durationMultiplier",multiplier);}else r.put("minutes",Records.minutes(label)).put("label",label+" 分钟");
                 r.put("updatedAt",Records.now()).put("sortOrder",old==null?data.getJSONArray(Records.array(entity)).length():old.optInt("sortOrder"));
                 JSONArray options=data.getJSONArray(Records.array(entity));
                 for(int i=0;i<options.length();i++){JSONObject o=options.getJSONObject(i);if(!o.getString("id").equals(r.getString("id"))&&(type?o.getString("name").equals(label):o.getInt("minutes")==r.getInt("minutes"))){value.setError(type?"已有这个名称。":"已有这个时长。");return;}}
-                saveOptionAsync(d,value,entity,r,old==null&&tab==0&&managedEntity==null);
+                saveOptionAsync(d,value,rate,entity,r,old==null&&tab==0&&managedEntity==null);
             }catch(Exception e){fail(e);}
         });
     }
-    private void saveOptionAsync(AlertDialog dialog,EditText value,String entity,JSONObject record,boolean selectForPractice){
-        value.setEnabled(false);dialog.setCancelable(false);
+    private void saveOptionAsync(AlertDialog dialog,EditText value,EditText rate,String entity,JSONObject record,boolean selectForPractice){
+        value.setEnabled(false);if(rate!=null)rate.setEnabled(false);dialog.setCancelable(false);
         Button save=dialog.getButton(AlertDialog.BUTTON_POSITIVE);save.setEnabled(false);save.setText("保存中…");
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
         changeAsync(n->{Records.upsert(n,entity,record);if(selectForPractice){JSONObject check=n.getJSONObject("drafts").optJSONObject("checkIn");if(check==null)check=new JSONObject();if(entity.equals("practiceType"))check.put("typeId",record.getString("id"));else{check.put("preset",record.getInt("minutes"));check.remove("manual");}n.getJSONObject("drafts").put("checkIn",check);}},()->{
             dialog.dismiss();saved("选项已保存");if(tab==0&&managedEntity==null&&refreshPracticeOptions!=null)refreshPracticeOptions.run();else showApp();
         },()->{
-            value.setEnabled(true);dialog.setCancelable(true);save.setEnabled(true);save.setText("保存");dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
+            value.setEnabled(true);if(rate!=null)rate.setEnabled(true);dialog.setCancelable(true);save.setEnabled(true);save.setText("保存");dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
         });
     }
     private void settings()throws Exception{
@@ -1153,7 +1167,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         text(page,"系统中已登记的强生物识别可解锁。新增指纹后需重新启用；请保留主密码。",14);
         button(page,"更换主密码",this::changePassword);
         }
-        text(page,"记录只保存在本机，不遥测、不接入 AI；没有密码找回服务。仅手动检查更新时连接 GitHub，不上传记录。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
+        text(page,"记录只保存在本机，不遥测、不接入 AI；没有密码找回服务。每次打开后自动检查更新，也可手动检查；仅连接 GitHub 获取公开版本信息，不上传记录。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
         text(page,"备份",19);
         text(page,"导出、验证与恢复加密备份，以及旧网页资料迁移。",14);
         Button backups=button(page,"备份与导出",()->{backupOrigin=5;tab=4;showApp();});backups.setContentDescription("备份");
@@ -1303,7 +1317,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         switch(action){case "create":return "新增";case "update":return "修改";case "delete":return "移到已删除";case "restore":return "恢复";case "reorder":return "调整顺序";default:return "变更";}
     }
     private String deletedLabel(String entity,JSONObject r){
-        switch(entity){case "practiceType":return r.optString("name");case "durationPreset":return r.optInt("minutes")+" 分钟";case "checkIn":return r.optString("practiceDate")+" · "+r.optString("practiceTypeName")+" · "+r.optInt("durationMinutes")+" 分钟";case "journal":return r.optString("journalDate")+" 感悟";default:return "归档资料";}
+        switch(entity){case "practiceType":return r.optString("name");case "durationPreset":return r.optInt("minutes")+" 分钟";case "checkIn":return r.optString("practiceDate")+" · "+r.optString("practiceTypeName")+" · "+Records.durationLabel(r);case "journal":return r.optString("journalDate")+" 感悟";default:return "归档资料";}
     }
     private void maintenanceDetails()throws Exception{
         button(page,"返回维护",()->{maintenance=null;showApp();});
@@ -1325,22 +1339,25 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             if(BuildConfig.DEBUG)text(page,"体验测试版，与 GitHub 正式版独立安装。",14);
             TextView result=text(page,updateMessage,16);result.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
             button(page,updateRequest==null?"检查更新":"正在检查…",this::checkForUpdates).setEnabled(updateRequest==null);
-            if(latestRelease!=null&&latestRelease.apkUrl!=null&&UpdateChecker.compareVersions(latestRelease.version,BuildConfig.VERSION_NAME)>=0)
-                button(page,"下载 v"+latestRelease.version+" APK",()->openUpdatePage(latestRelease.apkUrl));
-            button(page,"前往 GitHub 下载最新版",()->openUpdatePage(UpdateChecker.LATEST_PAGE));
-            text(page,"仅点击“检查更新”时联网获取正式版本信息，不上传记录，也不会自动下载或安装。",14);
+            if(latestRelease!=null)button(page,"查看 v"+latestRelease.version+" 更新",()->openUpdatePage(latestRelease.pageUrl));
+            else button(page,"前往 GitHub 发布页",()->openUpdatePage(UpdateChecker.LATEST_PAGE));
+            text(page,"每次打开并解锁后自动检查一次 GitHub 正式版本，也可手动检查。不上传记录，不自动下载或安装；跳过的版本仍可手动查看。",14);
             text(page,"更新时直接覆盖安装，保留本机记录。建议提前导出并验证备份。",14);
         }
     }
-    private void openUpdatePage(String url){
-        try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));}
-        catch(android.content.ActivityNotFoundException e){toast("未找到可打开 GitHub 的浏览器，请先安装或启用浏览器。");}
+    private boolean openUpdatePage(String url){
+        if(!UpdateChecker.LATEST_PAGE.equals(url)&&!(latestRelease!=null&&UpdateChecker.isReleasePage(url,latestRelease.tag)))return false;
+        startupUpdates.externalDeparture();
+        try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE));return true;}
+        catch(android.content.ActivityNotFoundException|SecurityException e){startupUpdates.departureFailed();toast("无法打开发布页，请安装或启用浏览器后重试。");return false;}
     }
-    private void checkForUpdates(){
-        if(!unlocked()||updateRequest!=null)return;
+    private void checkForUpdates(){checkForUpdates(true);}
+    private void checkForUpdates(boolean manual){
+        if(!foreground||!unlocked()||updateRequest!=null)return;
+        if(manual)startupUpdates.manualCheck();
         UpdateChecker.Request request=updateRequestFactory.get();updateRequest=request;
         latestRelease=null;updateMessage="正在检查 GitHub 最新正式版本…";
-        long token=generation;showApp();
+        long token=generation,opening=startupUpdates.session();if(manual)showApp();
         if(updateWorker==null)updateWorker=Executors.newSingleThreadExecutor();
         updateTask=updateWorker.submit(()->{
             UpdateChecker.Release release=null;String message;
@@ -1349,11 +1366,57 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             catch(Exception e){message="检查失败，请检查网络后重试，或前往 GitHub 查看。";}
             UpdateChecker.Release result=release;String status=message;
             runOnUiThread(()->{
-                if(token!=generation||updateRequest!=request||!unlocked()||isFinishing())return;
+                if(token!=generation||updateRequest!=request||!foreground||!unlocked()||isFinishing())return;
                 updateRequest=null;updateTask=null;latestRelease=result;updateMessage=status;
+                startupUpdates.completed(opening,result,BuildConfig.VERSION_NAME,getPreferences(MODE_PRIVATE).getString("skippedUpdateTag",""),manual);
                 if(tab==6&&"version".equals(maintenance))showApp();
+                scheduleStartupUpdate();
             });
         });
+    }
+    private void scheduleStartupUpdate(){
+        unlockHandler.removeCallbacks(startupUpdateReady);unlockHandler.post(startupUpdateReady);
+    }
+    private final Runnable startupUpdateReady=()->{
+        if(!foreground||!unlocked()||isFinishing()||isDestroyed())return;
+        if(updateRequest==null&&startupUpdates.beginAutomaticCheck())checkForUpdates(false);
+        boolean otherDialog=false;for(AlertDialog d:dialogs)if(d.isShowing()){otherDialog=true;break;}
+        View focus=getCurrentFocus();
+        boolean editing=managedEntity!=null||journalEditing||tab==4||pendingUri!=null||pendingProtectionSession!=null||freshRestoreSession!=null||focus instanceof EditText;
+        UpdateChecker.Release release=startupUpdates.takePrompt(foreground,unlocked(),busy,editing,otherDialog);
+        if(release!=null)showUpdatePrompt(release);
+    };
+    @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus)scheduleStartupUpdate();}
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event){boolean handled=super.dispatchTouchEvent(event);if(event.getAction()==android.view.MotionEvent.ACTION_UP)scheduleStartupUpdate();return handled;}
+    @Override public void startActivityForResult(Intent intent,int requestCode){
+        startupUpdates.externalDeparture();
+        try{super.startActivityForResult(intent,requestCode);}catch(RuntimeException e){startupUpdates.departureFailed();throw e;}
+    }
+    private void showUpdatePrompt(UpdateChecker.Release release){
+        LinearLayout layout=column();layout.setPadding(dp(20),dp(12),dp(20),dp(12));
+        // All copy scrolls so actions retain space even on small landscape screens with large text.
+        ScrollView details=new ScrollView(this);details.setContentDescription("本次更新说明");LinearLayout body=column();details.addView(body);
+        TextView title=text(body,"发现新版本 v"+release.version,22);if(android.os.Build.VERSION.SDK_INT>=28)title.setAccessibilityHeading(true);
+        text(body,"当前版本 v"+BuildConfig.VERSION_NAME,14);
+        text(body,"本次更新",16);
+        text(body,release.highlights,16).setAutoLinkMask(0);
+        layout.addView(details,new LinearLayout.LayoutParams(-1,0,1));
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setView(layout).create();
+        Button view=button(layout,"查看更新",()->{if(openUpdatePage(release.pageUrl))d.dismiss();});selected(view,true);
+        LinearLayout later=row(layout);button(later,"稍后",d::dismiss);
+        button(later,"跳过此版本",()->{
+            getPreferences(MODE_PRIVATE).edit().putString("skippedUpdateTag",release.tag).apply();
+            d.dismiss();toast("已跳过 v"+release.version+"，可在设置中手动查看更新");
+        });
+        d.setCanceledOnTouchOutside(true);dialog(d);
+        android.util.DisplayMetrics metrics=new android.util.DisplayMetrics();getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        int availableHeight=Math.min(dp(600),metrics.heightPixels-dp(32));
+        int availableWidth=Math.min(metrics.widthPixels-dp(32),dp(440));
+        int width=View.MeasureSpec.makeMeasureSpec(availableWidth,View.MeasureSpec.EXACTLY);
+        int unbounded=View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED);
+        layout.measure(width,unbounded);
+        body.measure(View.MeasureSpec.makeMeasureSpec(Math.max(1,availableWidth-dp(40)),View.MeasureSpec.EXACTLY),unbounded);
+        d.getWindow().setLayout(availableWidth,Math.min(availableHeight,layout.getMeasuredHeight()+body.getMeasuredHeight()+dp(24)));
     }
     private void pick(int action){
         if(action==EXPORT&&deviceMode){requireBackupPassword();return;}

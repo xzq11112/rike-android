@@ -38,7 +38,7 @@ public class ThemeSwitchTest {
         @Override public void write(byte[] bytes)throws IOException{writes++;super.write(bytes);}
     }
     @Test public void togglesOnlyColorsKeepsGridsInputFocusAndScrollWithoutVaultWrite()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();JSONObject data=Records.empty();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject data=Records.empty();
         data.getJSONArray("practiceTypes").put(new JSONObject().put("id","t").put("name","SYNTHETIC-TYPE"));
         data.getJSONObject("drafts").put("checkIn",new JSONObject().put("typeId","t").put("manual","17").put("note","SYNTHETIC-NOTE"));
         VaultCrypto.Created key=VaultCrypto.create("012345".toCharArray());CountingStore store=new CountingStore(a);

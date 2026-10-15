@@ -39,7 +39,7 @@ public class CheckInNoteTest {
         return TestWork.views(root,TextView.class).stream().filter(v->value.contentEquals(v.getText())).count();
     }
     @Test public void nullableImportedRemarksAreHiddenWhileActualTextIsPreserved()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             JSONObject data=Records.empty();
             data.getJSONArray("checkIns").put(check("missing")).put(check("json-null").put("note",JSONObject.NULL))
@@ -53,7 +53,7 @@ public class CheckInNoteTest {
         }finally{c.pause().stop().destroy();}
     }
     @Test public void nullableRemarkStartsBlankInBothEditorAndTodayDraft()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try{
             JSONObject data=Records.empty(),row=check("json-null").put("note",JSONObject.NULL);
             data.getJSONArray("checkIns").put(row);data.getJSONObject("drafts").put("checkIn",new JSONObject().put("note",JSONObject.NULL));

@@ -1,3 +1,15 @@
+# 0.6.8 / versionCode 21 — 验证（2026-10-15）
+
+GitHub Actions [38661745689](https://github.com/xzq11112/rike-android/actions/runs/38661745689) 通过。APK 应用源码提交为 `9ba6d7edb1254f692b58d6bfeedb31ed83626ed5`，受测合并检出为 `80e1454908244c287d26891d6c075de86b790406`；之后只固定签名输入摘要并补验证说明，未修改应用及测试代码。
+
+- Debug / Release：各 153 项测试，0 失败、0 错误、0 跳过。
+- Release lint：0 错误、13 警告；Debug / Release APK 构建成功，正式包联网权限及非调试标记检查通过。
+- Windows PowerShell 5.1：23 项合成签名检查通过，无生产密钥参与。
+- 新增练习倍率、有效时长小数累计、备份删除恢复及长按保存打卡流程回归；启动提醒覆盖次数、跳过、手动重试、浏览器返回、锁定过期回调、编辑中延迟及小屏大字体日夜布局。
+- 正式未签名 APK SHA-256：`943bbc7ab9d505a523ad36b6405587319e96a28355afd7dcbbf7f308c9596fdc`。本机签名脚本已固定该输入。
+
+实际手机操作、浏览器交互和同签名覆盖安装仍需对应设备核对。生产签名与发布状态以最终 APK 核验回执和 GitHub Release 为准。
+
 # 0.6.5 / versionCode 18 — 本轮验证（2026-10-07）
 
 本轮 GitHub Actions [37592157236](https://github.com/xzq11112/rike-android/actions/runs/37592157236) 已通过。构建源码提交为 `485a98a56d462e30a62109c35afc3d6a2c8470b5`；之后只补充文档与签名输入哈希，应用及测试源码未变。

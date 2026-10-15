@@ -12,14 +12,14 @@ public class PracticeHeatmapTest {
     @Test public void leapYearAndMonthsAreContinuousAndKeepActualMinutes()throws Exception {
         JSONArray checks=new JSONArray().put(new JSONObject().put("practiceDate","2024-02-29").put("durationMinutes",20))
             .put(new JSONObject().put("practiceDate","2024-02-29").put("durationMinutes",25));
-        String unchanged=checks.toString();Map<String,Long> minutes=PracticeStats.from(checks,LocalDate.of(2024,3,1)).minutesByDate;
+        String unchanged=checks.toString();Map<String,Double> minutes=PracticeStats.from(checks,LocalDate.of(2024,3,1)).minutesByDate;
         List<PracticeHeatmap.Day> year=PracticeHeatmap.year(2024,minutes);assertEquals(366,year.size());
         for(int i=1;i<year.size();i++)assertEquals(year.get(i-1).date.plusDays(1),year.get(i).date);
         assertEquals(LocalDate.of(2024,1,1),year.get(0).date);assertEquals(LocalDate.of(2024,12,31),year.get(365).date);
         assertEquals(365,PracticeHeatmap.year(2025,minutes).size());
         List<PracticeHeatmap.Day> feb=PracticeHeatmap.month(2024,2,minutes);assertEquals(29,feb.size());
-        assertEquals(45,feb.get(28).minutes);assertEquals(0,feb.get(0).minutes);assertEquals(unchanged,checks.toString());
-        assertEquals(45,PracticeStats.from(checks,LocalDate.of(2024,3,1)).totalMinutes);
+        assertEquals(45,feb.get(28).minutes,0.000001);assertEquals(0,feb.get(0).minutes,0.000001);assertEquals(unchanged,checks.toString());
+        assertEquals(45,PracticeStats.from(checks,LocalDate.of(2024,3,1)).totalMinutes,0.000001);
     }
     @Test public void fixedYellowAnchorsInterpolateEveryMinuteWithoutUserNormalization(){
         for(int i=0;i<PracticeHeatmap.ANCHORS.length;i++)assertEquals(PracticeHeatmap.YELLOWS[i],PracticeHeatmap.color(PracticeHeatmap.ANCHORS[i],false));

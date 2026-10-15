@@ -51,7 +51,7 @@ public class TodayAndPersistenceTest {
             .put("practiceTypeName","历史名称").put("note",note);
     }
     @Test public void todayListAndConfirmedDeletionRefreshStatsAndPreserveHistory()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         JSONObject d=Records.empty();LocalDate now=LocalDate.now();
         Records.upsert(d,"checkIn",check("one",now,20,"SYNTHETIC-TODAY-ONE"));
         Records.upsert(d,"checkIn",check("two",now,30,"SYNTHETIC-TODAY-TWO"));
@@ -73,7 +73,7 @@ public class TodayAndPersistenceTest {
         Arrays.fill(reopened.plaintext,(byte)0);reopened.session.close();c.pause().stop().destroy();
     }
     @Test public void duplicateImportedDurationsRenderOnceWithoutDeletingEitherRecord()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();JSONObject d=Records.empty();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject d=Records.empty();
         d.getJSONArray("durationPresets").put(new JSONObject().put("id","a").put("minutes",30).put("label","旧名称"))
             .put(new JSONObject().put("id","b").put("minutes",30).put("label","另一个名称"));
         open(a,d);assertEquals(1,buttons(a.getWindow().getDecorView(),"30 分钟"));
@@ -83,7 +83,7 @@ public class TodayAndPersistenceTest {
         c.pause().stop().destroy();
     }
     @Test public void failedDraftSaveKeepsCommittedMemoryAndCiphertextThenRetrySucceeds()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();JSONObject d=Records.empty();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject d=Records.empty();
         d.getJSONArray("practiceTypes").put(new JSONObject().put("id","old").put("name","OLD-TYPE"))
             .put(new JSONObject().put("id","new").put("name","NEW-TYPE"));
         d.getJSONObject("drafts").put("checkIn",new JSONObject().put("typeId","old").put("note","SYNTHETIC-EXISTING-NOTE"));
@@ -97,7 +97,7 @@ public class TodayAndPersistenceTest {
         Arrays.fill(reopened.plaintext,(byte)0);reopened.session.close();c.pause().stop().destroy();
     }
     @Test public void committedDraftDoesNotAliasCallerOwnedObject()throws Exception {
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();FailingStore store=open(a,Records.empty());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());FailingStore store=open(a,Records.empty());
         JSONObject draft=new JSONObject().put("content","SYNTHETIC-SAVED-DRAFT");
         Method save=MainActivity.class.getDeclaredMethod("saveDraft",String.class,JSONObject.class);save.setAccessible(true);save.invoke(a,"dream",draft);TestWork.flush(a);
         byte[] before=store.read();draft.put("content","SYNTHETIC-UNCOMMITTED-EDIT");

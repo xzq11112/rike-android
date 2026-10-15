@@ -65,7 +65,7 @@ public class OptionSaveTest {
     }
     @Test public void slowSavesKeepUiResponsiveAndPreserveTodayDraft()throws Exception{
         for(boolean type:new boolean[]{true,false}){
-            ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();SlowStore s=open(a);
+            ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());SlowStore s=open(a);
             View root=(View)get(a,"root");s.slow=false;EditText manual=input(root);manual.setText("17");
             TestWork.flush(a); // Persist the synthetic draft before delaying the option commit.
             s.reset();AlertDialog d=save(a,type?"添加练习类型":"添加常用练习时长",type?"SYNTHETIC-TYPE":"47");
@@ -79,7 +79,7 @@ public class OptionSaveTest {
         }
     }
     @Test public void failedSavePreservesDiskAndMemoryAllowsRetryAndRedactsDiagnostics()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();SlowStore s=open(a);
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());SlowStore s=open(a);
         String before=((JSONObject)get(a,"data")).toString();byte[] ciphertext=s.read();s.fail=true;
         AlertDialog d=save(a,"添加练习类型","SYNTHETIC-TYPE");assertTrue(s.started.await(10,TimeUnit.SECONDS));finish(a,s);
         assertTrue(d.isShowing());assertTrue(d.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());assertEquals(before,((JSONObject)get(a,"data")).toString());assertArrayEquals(ciphertext,s.read());
@@ -88,7 +88,7 @@ public class OptionSaveTest {
         assertEquals(1,disk(s).getJSONArray("practiceTypes").length());c.pause().stop().destroy();
     }
     @Test public void backgroundDuringSaveDoesNotRestoreUnlockedScreen()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();SlowStore s=open(a);
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());SlowStore s=open(a);
         AlertDialog d=save(a,"添加常用练习时长","47");assertTrue(s.started.await(10,TimeUnit.SECONDS));c.pause();
         assertFalse(d.isShowing());assertNull(get(a,"data"));assertNull(get(a,"session"));finish(a,s);
         assertNull(get(a,"data"));assertNull(get(a,"session"));assertNotNull(button(a.getWindow().getDecorView(),"使用字符键盘"));

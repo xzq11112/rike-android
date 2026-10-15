@@ -19,7 +19,7 @@ public class PrivacyActivityTest {
     private static void call(Object target,String method)throws Exception{Method m=target.getClass().getDeclaredMethod(method);m.setAccessible(true);m.invoke(target);}
     private static String text(View v){StringBuilder b=new StringBuilder();if(v instanceof TextView)b.append(((TextView)v).getText());if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)b.append(text(((ViewGroup)v).getChildAt(i)));return b.toString();}
     @Test public void backgroundDestroysSessionAndRemovesPrivateScreen()throws Exception{
-        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=controller.get();
+        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(controller.get());
         VaultCrypto.Created c=VaultCrypto.create("synthetic-test-password".toCharArray());JSONObject d=Records.empty();
         d.getJSONArray("journals").put(new JSONObject().put("id","test").put("journalDate",java.time.LocalDate.now().toString()).put("content","synthetic-private-journal"));
         set(a,"session",c.session);set(a,"data",d);set(a,"tab",2);call(a,"showApp");
@@ -28,7 +28,7 @@ public class PrivacyActivityTest {
         assertFalse(text(a.getWindow().getDecorView()).contains("synthetic-private-journal"));controller.stop().destroy();
     }
     @Test public void manualUpdatePermissionWithNoBackupAndSecureWindow(){
-        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=controller.get();
+        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(controller.get());
         assertEquals(PackageManager.PERMISSION_GRANTED,a.getPackageManager().checkPermission(Manifest.permission.INTERNET,a.getPackageName()));
         assertFalse((a.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC)!=0);
         assertTrue((a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
@@ -56,7 +56,7 @@ public class PrivacyActivityTest {
         return null;
     }
     @Test public void presetsToggleAndManualMinutesStayIndependent()throws Exception{
-        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=controller.get();
+        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(controller.get());
         VaultCrypto.Created c=VaultCrypto.create("synthetic-test-password".toCharArray());JSONObject d=Records.empty();
         d.getJSONArray("practiceTypes").put(new JSONObject().put("id","t").put("name","test type"));
         d.getJSONArray("durationPresets").put(new JSONObject().put("id","m").put("minutes",30));
@@ -78,7 +78,7 @@ public class PrivacyActivityTest {
         controller.pause().stop().destroy();
     }
     @Test public void selectedImportSurvivesMandatoryLockAndResumesAfterUnlock()throws Exception{
-        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=controller.get();
+        ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(controller.get());
         VaultCrypto.Created c=VaultCrypto.create("synthetic-test-password".toCharArray());JSONObject d=Records.empty();
         VaultStore store=new VaultStore(a);store.write(VaultCrypto.encrypt(c.session,d.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         set(a,"session",c.session);set(a,"data",d);call(a,"showApp");controller.pause();

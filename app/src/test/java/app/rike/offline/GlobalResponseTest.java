@@ -37,7 +37,7 @@ public class GlobalResponseTest {
         set(a,"store",store);set(a,"session",key.session);set(a,"data",d);call(a,"showApp");return store;
     }
     @Test public void typingCoalescesAndLockFlushesWithoutBlockingOrResurrectingUi()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();TrackingStore store=open(a,Records.empty());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());TrackingStore store=open(a,Records.empty());
         ExecutorService worker=(ExecutorService)TestWork.get(a,"crypto");CountDownLatch started=new CountDownLatch(1),release=new CountDownLatch(1);
         worker.execute(()->{started.countDown();try{release.await(10,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();}});assertTrue(started.await(10,TimeUnit.SECONDS));
         EditText manual=input(a.getWindow().getDecorView());for(int i=1;i<=42;i++)manual.setText(String.valueOf(i));
@@ -48,19 +48,19 @@ public class GlobalResponseTest {
         VaultCrypto.Opened restored=VaultCrypto.open(store.read(),"012345".toCharArray());assertEquals("42",new JSONObject(new String(restored.plaintext,StandardCharsets.UTF_8)).getJSONObject("drafts").getJSONObject("checkIn").getString("manual"));restored.session.close();c.stop().destroy();
     }
     @Test public void thousandsOfRecordsAndExpandedHeatmapsKeepViewCountBounded()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();JSONObject d=Records.empty();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject d=Records.empty();
         for(int i=0;i<3000;i++)d.getJSONArray("checkIns").put(new JSONObject().put("id","synthetic-"+i).put("practiceDate",LocalDate.now().minusDays(i%600).toString()).put("practiceTypeName","SYNTHETIC").put("durationMinutes",10).put("note","synthetic notes"));
         open(a,d);View root=a.getWindow().getDecorView();assertTrue(count(root)<200);TestWork.navigate(a,3);assertTrue(count(a.getWindow().getDecorView())<400);
         button(a.getWindow().getDecorView(),"记录").performClick();assertTrue(count(a.getWindow().getDecorView())<360);assertNull(TestWork.named(a.getWindow().getDecorView(),"下一页"));
         assertEquals(3000,((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").length());c.pause().stop().destroy();
     }
     @Test public void directUiVaultWriteIsRejected()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();TrackingStore store=open(a,Records.empty());
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());TrackingStore store=open(a,Records.empty());
         Method m=MainActivity.class.getDeclaredMethod("persist",VaultCrypto.Session.class,JSONObject.class);m.setAccessible(true);
         try{m.invoke(a,TestWork.get(a,"session"),TestWork.get(a,"data"));fail("UI write must be rejected");}catch(InvocationTargetException e){assertTrue(e.getCause() instanceof IllegalStateException);}assertEquals(0,store.writes);c.pause().stop().destroy();
     }
     @Test public void virtualHeatmapDaysRemainClickableAndAccessible()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=c.get();AtomicBoolean clicked=new AtomicBoolean();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());AtomicBoolean clicked=new AtomicBoolean();
         HeatmapView grid=new HeatmapView(a,PracticeHeatmap.year(2024,java.util.Collections.emptyMap()),19,false,false,d->clicked.set(d.date.equals(LocalDate.of(2024,2,29))));
         grid.measure(View.MeasureSpec.makeMeasureSpec(380,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED));grid.layout(0,0,380,grid.getMeasuredHeight());
         android.view.accessibility.AccessibilityNodeProvider p=grid.getAccessibilityNodeProvider();assertEquals(366,p.createAccessibilityNodeInfo(-1).getChildCount());assertTrue(p.createAccessibilityNodeInfo(59).getContentDescription().toString().contains("2024-02-29"));assertTrue(p.performAction(59,android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK,null));assertTrue(clicked.get());c.pause().stop().destroy();
