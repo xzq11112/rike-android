@@ -35,10 +35,10 @@ public class PracticeStatsTest {
         assertEquals(60,PracticeStats.from(new JSONArray().put(check("2026-10-09",119)),LocalDate.parse("2026-10-10")).totalAverageMinutes);
         rows.remove(0);assertEquals(34,PracticeStats.from(rows,LocalDate.parse("2026-10-10")).totalAverageMinutes);
     }
-    @Test public void durationUsesHoursAndMinutesAndPreservesMultiplierFractions()throws Exception {
+    @Test public void durationUsesWholeHoursAndMinutes()throws Exception {
         assertEquals("0分钟",PracticeStats.formatMinutes(0));assertEquals("45分钟",PracticeStats.formatMinutes(45));
-        assertEquals("1小时0分钟",PracticeStats.formatMinutes(60));assertEquals("1小时30分钟",PracticeStats.formatMinutes(90));
-        assertEquals("100小时5分钟",PracticeStats.formatMinutes(6005));assertEquals("1小时3.7分钟",PracticeStats.formatMinutes(63.7));
+        assertEquals("1小时",PracticeStats.formatMinutes(60));assertEquals("1小时30分钟",PracticeStats.formatMinutes(90));
+        assertEquals("100小时5分钟",PracticeStats.formatMinutes(6005));assertEquals("1小时3分钟",PracticeStats.formatMinutes(63.7));
         PracticeStats s=PracticeStats.from(new JSONArray().put(check("2026-10-10",60).put("durationMultiplier",0.7)),LocalDate.parse("2026-10-10"));
         assertEquals(6,s.weekAverageMinutes);assertEquals(42,s.totalAverageMinutes);
     }
