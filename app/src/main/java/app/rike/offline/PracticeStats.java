@@ -24,8 +24,9 @@ public final class PracticeStats {
         totalAverageMinutes=Math.round(total/(100.0*elapsedDays));
     }
     public static String formatMinutes(double minutes) {
-        long hundredths=Math.round(minutes*100);
-        return hundredths<6000?Records.decimal(hundredths/100.0)+"分钟":hundredths/6000+"小时"+Records.decimal((hundredths%6000)/100.0)+"分钟";
+        long whole=(long)Math.floor(minutes);
+        if(whole<60)return whole+"分钟";
+        return whole/60+"小时"+(whole%60==0?"":whole%60+"分钟");
     }
     public static PracticeStats from(JSONArray checkIns,LocalDate today)throws JSONException {
         Map<String,Long> days=new HashMap<>();long total=0,week=0;

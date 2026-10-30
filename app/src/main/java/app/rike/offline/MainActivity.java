@@ -104,7 +104,6 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         super.onCreate(null); // Never restore framework plaintext form state.
         Object retained=getLastNonConfigurationInstance();
         if(retained instanceof StartupUpdateFlow)startupUpdates=(StartupUpdateFlow)retained;
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         store = new VaultStore(this);access=VaultAccess.forPath(new File(getNoBackupFilesDir(),"vault.rike").getAbsolutePath());crypto=access.worker;access.acquire(this); biometric = new BiometricVault(this); device=new DeviceVault(this); dark = getPreferences(MODE_PRIVATE).getBoolean("dark", false);
         if(android.os.Build.VERSION.SDK_INT>=33)modernBack=BackApi33.install(this);
         showLocked();
@@ -281,7 +280,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void dialog(AlertDialog d) {
         dialogs.add(d); d.setOnDismissListener(x->{if(d.getWindow()!=null){wipe(d.getWindow().getDecorView());forgetTheme(d.getWindow().getDecorView());}dialogs.remove(d);scheduleStartupUpdate();});
-        d.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);d.getWindow().setBackgroundDrawable(bg(paper())); d.show();
+        d.getWindow().setBackgroundDrawable(bg(paper())); d.show();
     }
     private android.content.Context dialogContext(){return new ContextThemeWrapper(this,dark?android.R.style.Theme_Material_Dialog_Alert:android.R.style.Theme_Material_Light_Dialog_Alert);}
     private void confirm(String title,String message,Runnable yes){
@@ -983,13 +982,27 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private LinearLayout recordCard(){
         LinearLayout card=column();card.setPadding(dp(16),dp(4),dp(16),dp(12));GradientDrawable background=bg(surface());card.setBackground(background);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(6),0,dp(12));page.addView(card,lp);themeUpdates.put(card,()->{background.setColor(surface());background.setStroke(dp(1),border());});return card;
     }
+    private void copyDailySummary(List<JSONObject> entries){
+        if(!unlocked()||busy)return;
+        try{
+            android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);
+            if(clipboard==null){toast("复制失败，请重试");return;}
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("日课练习汇总",Records.dailySummary(entries)));
+            toast("已复制到剪贴板");
+        }catch(Exception e){toast("复制失败，请重试");}
+    }
     private void history()throws Exception{
         text(page,"练习记录",22);text(page,"按日期归拢，每日时长一目了然。",13);dateFilter(false);
         RecordIndex idx=index();List<JSONObject> rows=historyDate==null?idx.recentChecks:idx.checksByDay.getOrDefault(historyDate,Collections.emptyList());
         LinkedHashMap<String,List<JSONObject>> groups=new LinkedHashMap<>();for(JSONObject r:rows)groups.computeIfAbsent(r.optString("practiceDate"),k->new ArrayList<>()).add(r);
         List<String> days=new ArrayList<>(groups.keySet());historyPage=Math.min(historyPage,Math.max(0,(days.size()-1)/PAGE_SIZE));
         for(String day:days.subList(historyPage*PAGE_SIZE,Math.min((historyPage+1)*PAGE_SIZE,days.size()))){
-            List<JSONObject> entries=groups.get(day);LinearLayout card=recordCard();LinearLayout title=row(card);TextView date=text(title,day,18);date.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));long subtotal=0;for(JSONObject r:entries)subtotal+=Records.effectiveHundredths(r);text(title,"小计 "+Records.decimal(subtotal/100.0)+" 分钟",14);text(card,entries.size()+" 次练习",12);
+            List<JSONObject> entries=groups.get(day);LinearLayout card=recordCard();LinearLayout title=row(card);title.setGravity(Gravity.CENTER_VERTICAL);
+            TextView date=text(title,day,18);date.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+            Button export=button(title,"导出",()->copyDailySummary(entries));
+            export.setLayoutParams(new LinearLayout.LayoutParams(-2,-2));export.setContentDescription("导出 "+day+" 的练习记录");
+            long subtotal=0;for(JSONObject r:entries)subtotal+=Records.effectiveHundredths(r);
+            text(card,"小计 "+PracticeStats.formatMinutes(subtotal/100.0),14);text(card,entries.size()+" 次练习",12);
             for(JSONObject r:entries){
                 LinearLayout line=row(card);line.setGravity(Gravity.CENTER_VERTICAL);LinearLayout body=column();line.addView(body,new LinearLayout.LayoutParams(0,-2,1));text(body,r.optString("practiceTypeName"),16);
                 if(Records.find(data,"practiceType",r.optString("practiceTypeId"))==null)text(body,"历史类型",11);

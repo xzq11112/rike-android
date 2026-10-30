@@ -27,11 +27,11 @@ public class PrivacyActivityTest {
         controller.pause();assertNull(get(a,"session"));assertNull(get(a,"data"));assertTrue(c.session.isClosed());
         assertFalse(text(a.getWindow().getDecorView()).contains("synthetic-private-journal"));controller.stop().destroy();
     }
-    @Test public void manualUpdatePermissionWithNoBackupAndSecureWindow(){
+    @Test public void manualUpdatePermissionWithNoBackupAndScreenshotsAllowed(){
         ActivityController<MainActivity> controller=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(controller.get());
         assertEquals(PackageManager.PERMISSION_GRANTED,a.getPackageManager().checkPermission(Manifest.permission.INTERNET,a.getPackageName()));
         assertFalse((a.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC)!=0);
-        assertTrue((a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
+        assertEquals(0,a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
         assertFalse((a.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_ALLOW_BACKUP)!=0);
         controller.pause().stop().destroy();
     }
@@ -92,7 +92,7 @@ public class PrivacyActivityTest {
         VaultCrypto.Opened opened=VaultCrypto.open(store.read(),"synthetic-test-password".toCharArray());
         set(a,"session",opened.session);set(a,"data",d);call(a,"showApp");call(a,"consumePending");TestWork.drain(a);
         android.app.AlertDialog dialog=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
-        assertTrue((dialog.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
+        assertEquals(0,dialog.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE);
         dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick();
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();TestWork.drain(a);
         assertEquals(1,((JSONObject)get(a,"data")).getJSONArray("dreams").length());assertNull(get(a,"pendingUri"));

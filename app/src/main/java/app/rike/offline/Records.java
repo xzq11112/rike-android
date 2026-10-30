@@ -59,10 +59,27 @@ public final class Records {
         return row.has("durationMultiplier") ? multiplier(row.opt("durationMultiplier").toString()) : 1;
     }
     public static long effectiveHundredths(JSONObject row) {
+        // Discard fractional minutes per record; decimal arithmetic avoids binary drift.
         return java.math.BigDecimal.valueOf(row.optInt("durationMinutes"))
-            .multiply(java.math.BigDecimal.valueOf(multiplier(row))).movePointRight(2).longValueExact();
+            .multiply(java.math.BigDecimal.valueOf(multiplier(row)))
+            .setScale(0, java.math.RoundingMode.DOWN).longValueExact() * 100;
     }
     public static double effectiveMinutes(JSONObject row) { return effectiveHundredths(row) / 100.0; }
+    /** Share displayed credit, grouped by the historical name on each record. */
+    public static String dailySummary(List<JSONObject> entries) {
+        Map<String,Long> totals = new LinkedHashMap<>();
+        for (JSONObject record : entries) {
+            String name = record.optString("practiceTypeName");
+            totals.put(name, totals.getOrDefault(name, 0L) + effectiveHundredths(record));
+        }
+        StringBuilder result = new StringBuilder();
+        for (Map.Entry<String,Long> entry : totals.entrySet()) {
+            if (result.length() > 0) result.append('\n');
+            result.append(entry.getKey().replaceAll("[\\r\\n]+", " ")).append(' ')
+                .append(PracticeStats.formatMinutes(entry.getValue() / 100.0));
+        }
+        return result.toString();
+    }
     public static String decimal(double value) {
         return java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
