@@ -33,7 +33,7 @@ public class DailySummaryFlowTest {
             assertNotNull(TestWork.named(root,"小计 1小时42分钟"));
             View export=TestWork.named(root,"导出 2026-10-29 的练习记录");assertNotNull(export);export.performClick();
             ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
-            assertEquals("阴性写作 42分钟\n静坐 1小时",clipboard.getPrimaryClip().getItemAt(0).getText().toString());
+            assertEquals("静坐 1小时\n阴性写作 42分钟",clipboard.getPrimaryClip().getItemAt(0).getText().toString());
             controller.pause();
             assertNotNull(clipboard.getPrimaryClip());
         } finally {controller.stop().destroy();}
