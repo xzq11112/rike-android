@@ -32,7 +32,7 @@ public class AutomaticUnlockTest {
         new VaultStore(a).write(VaultCrypto.encrypt(key.session,d.toString().getBytes(StandardCharsets.UTF_8)));key.session.close();call(a,"showLocked");
     }
     @Test public void initialSetupExplainsCiphertextPasswordFingerprintAndRecovery()throws Exception{
-        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();String s=text(c.get().getWindow().getDecorView());assertTrue(s.contains("请牢记主密码"));assertTrue(s.contains("备份都是密文"));assertTrue(s.contains("仅有备份文件仍无法解密"));assertTrue(s.contains("没有服务器替你找回"));assertTrue(s.contains("指纹只帮助解锁这台手机"));assertTrue(s.contains("旧备份仍需要导出时的旧密码"));assertTrue(s.contains(BuildConfig.DEBUG?"本测试版不提供恢复密钥":"提前妥善保存该密钥"));assertNotNull(TestWork.named(c.get().getWindow().getDecorView(),"使用字符键盘"));c.pause().stop().destroy();
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();String s=text(c.get().getWindow().getDecorView());assertTrue(s.contains("密码无法找回"));assertTrue(s.contains(BuildConfig.DEBUG?"忘记密码将无法恢复":"密码和密钥都丢失将无法恢复"));assertFalse(s.contains("静观"));assertFalse(s.contains("不联网"));assertNotNull(TestWork.named(c.get().getWindow().getDecorView(),"了解密码与备份"));assertNotNull(TestWork.named(c.get().getWindow().getDecorView(),"使用字符键盘"));c.pause().stop().destroy();
     }
     @Test public void correctPasswordUnlocksWithoutButtonWrongPartialInputRemainsEditable()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());existing(a,"012345");byte[] before=new VaultStore(a).read();View screen=a.getWindow().getDecorView();assertNull(TestWork.named(screen,"解锁"));EditText pass=input(screen);ShadowToast.reset();

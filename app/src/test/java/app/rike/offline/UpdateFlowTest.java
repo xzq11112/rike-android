@@ -102,7 +102,7 @@ public class UpdateFlowTest {
     @Test public void editingDefersPromptUntilReadyAndDialogKeepsActionsOutsideScrollableCopy()throws Exception {
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());
         try {
-            AtomicInteger calls=new AtomicInteger();synthetic(a,calls);open(a);set(a,"journalEditing",true);settle(a);
+            AtomicInteger calls=new AtomicInteger();synthetic(a,calls);open(a);set(a,"tab",2);set(a,"journalEditing",true);settle(a);
             assertTrue(((java.util.List<?>)TestWork.get(a,"dialogs")).isEmpty());set(a,"journalEditing",false);call(a,"scheduleStartupUpdate");settle(a);
             AlertDialog d=prompt();View root=d.getWindow().getDecorView();
             ScrollView copy=(ScrollView)named(root,"本次更新说明");named(copy,"发现新版本 v99.0.0");named(copy,UpdateChecker.FALLBACK_HIGHLIGHTS);

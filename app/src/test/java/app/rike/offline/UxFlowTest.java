@@ -40,11 +40,30 @@ public class UxFlowTest {
         set(a,"session",key.session);set(a,"data",d);call(a,"showApp");
     }
     private static void confirm(MainActivity a)throws Exception{ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(Looper.getMainLooper()).idle();TestWork.drain(a);}
-    @Test public void backReturnsThroughSettingsBackupButJournalIsARootPage()throws Exception{
+    @Test public void backReturnsThroughSettingsAndHomeBeforeLocking()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());open(a,configured());VaultCrypto.Session key=(VaultCrypto.Session)TestWork.get(a,"session");
         TestWork.navigate(a,3);TestWork.navigate(a,4);assertEquals(4,TestWork.get(a,"tab"));a.onBackPressed();assertEquals(5,TestWork.get(a,"tab"));a.onBackPressed();assertEquals(3,TestWork.get(a,"tab"));assertSame(key,TestWork.get(a,"session"));
-        TestWork.navigate(a,2);inputs(a).get(0).setText("SYNTHETIC-DRAFT");TestWork.flush(a);a.onBackPressed();assertNull(TestWork.get(a,"session"));assertTrue(key.isClosed());open(a,configured());key=(VaultCrypto.Session)TestWork.get(a,"session");
+        TestWork.navigate(a,2);inputs(a).get(0).setText("SYNTHETIC-DRAFT");TestWork.flush(a);a.onBackPressed();assertEquals(0,TestWork.get(a,"tab"));assertSame(key,TestWork.get(a,"session"));a.onBackPressed();assertNull(TestWork.get(a,"session"));assertTrue(key.isClosed());open(a,configured());key=(VaultCrypto.Session)TestWork.get(a,"session");
         TestWork.navigate(a,0);TestWork.named(a.getWindow().getDecorView(),"Alpha").performLongClick();a.onBackPressed();assertNull(TestWork.get(a,"managedEntity"));assertSame(key,TestWork.get(a,"session"));c.pause().stop().destroy();
+    }
+    @Test public void journalNavigationKeepsSelectedDayAndUnsubmittedText()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());open(a,configured());
+        TestWork.navigate(a,2);String past=LocalDate.now().minusDays(4).toString();
+        set(a,"journalDate",past);set(a,"journalEditing",true);call(a,"showApp");
+        EditText editor=inputs(a).get(0);editor.setText("SYNTHETIC-KEEP-DATE");
+        TestWork.navigate(a,2);assertSame(editor,inputs(a).get(0));assertEquals(past,TestWork.get(a,"journalDate"));
+        TestWork.navigate(a,3);TestWork.navigate(a,2);assertEquals(past,TestWork.get(a,"journalDate"));assertEquals("SYNTHETIC-KEEP-DATE",inputs(a).get(0).getText().toString());
+        click(a,"回到今天");assertEquals(LocalDate.now().toString(),TestWork.get(a,"journalDate"));assertEquals("SYNTHETIC-KEEP-DATE",TestWork.draft(a,"journal:"+past).getString("content"));
+        c.pause().stop().destroy();
+    }
+    @Test public void durationKeyboardSubmitsOnceAndClearsDuration()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());open(a,configured());
+        EditText minutes=inputs(a).get(0);minutes.setText("17");minutes.onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);TestWork.drain(a);
+        assertEquals(1,((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").length());
+        assertEquals("",inputs(a).get(0).getText().toString());
+        inputs(a).get(0).onEditorAction(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);TestWork.drain(a);
+        assertEquals(1,((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").length());assertNotNull(inputs(a).get(0).getError());
+        c.pause().stop().destroy();
     }
     @Test public void manualLockSuppressesBiometricAndWipesRetiredViews()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());open(a,configured());
@@ -103,7 +122,7 @@ public class UxFlowTest {
         click(a,"Alpha");click(a,"20 分钟");Button submit=(Button)TestWork.named(a.getWindow().getDecorView(),"保存练习");submit.performClick();assertTrue(s.started.await(30,TimeUnit.SECONDS));
         assertFalse(submit.isEnabled());assertEquals("保存中…",submit.getText().toString());assertTrue(submit.getAlpha()<1f);assertFalse(TestWork.named(a.getWindow().getDecorView(),"记录").isEnabled());assertTrue(TestWork.named(a.getWindow().getDecorView(),"锁定").isEnabled());
         final boolean[] frame={false};new android.os.Handler(Looper.getMainLooper()).post(()->frame[0]=true);Shadows.shadowOf(Looper.getMainLooper()).idle();assertTrue(frame[0]);for(int i=0;i<10;i++)submit.performClick();s.release.countDown();TestWork.drain(a);
-        assertEquals(1,((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").length());assertTrue(text(a.getWindow().getDecorView()).contains("今日一课，已记下"));assertTrue(TestWork.named(a.getWindow().getDecorView(),"保存练习").isEnabled());c.pause().stop().destroy();
+        assertEquals(1,((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").length());assertTrue(text(a.getWindow().getDecorView()).contains("已打卡"));assertTrue(TestWork.named(a.getWindow().getDecorView(),"保存练习").isEnabled());c.pause().stop().destroy();
     }
     @Test public void failedSubmitKeepsInputAndCiphertextAndCanRetry()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());open(a,configured());SlowStore s=new SlowStore(a);set(a,"store",s);byte[] before=s.read();s.slow=true;s.fail=true;s.release.countDown();click(a,"Alpha");click(a,"20 分钟");click(a,"补记日期或添加备注");inputs(a).get(1).setText("SYNTHETIC-PRIVATE-NOTE");click(a,"保存练习");TestWork.drain(a);

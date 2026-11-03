@@ -117,14 +117,16 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     @Override protected void onDestroy() { lock();if(updateWorker!=null)updateWorker.shutdownNow();if(android.os.Build.VERSION.SDK_INT>=33&&modernBack!=null)BackApi33.remove(this,modernBack);diagnostics.clear();diagnosticExport=null;access.release(this);super.onDestroy(); }
     @Override public void onBackPressed() {
         if(session==null){moveTaskToBack(true);return;}
-        if(busy&&(managedEntity!=null||tab>=4||historyFromStats)){status("正在保存，请稍候；也可以使用右上角锁定。");return;}
+        if(busy&&(managedEntity!=null||tab!=0||historyFromStats)){status("正在保存，请稍候；也可以使用右上角锁定。");return;}
         if(managedEntity!=null){leaveManagement(this::showApp);return;}
-        
+
         if(tab==6&&maintenance!=null){maintenance=null;showApp();return;}
         if(tab==6){tab=5;showApp();return;}
         if(tab==4){tab=backupOrigin;showApp();return;}
         if(tab==5){tab=settingsOrigin;showApp();return;}
         if(tab==1&&historyFromStats){historyFromStats=false;tab=3;showApp();return;}
+        if(tab==2&&journalEditing&&!todayDate().toString().equals(journalDate)){openJournal(todayDate().toString());return;}
+        if(tab!=0){tab=0;showApp();return;}
         suppressAutomaticBiometric=true;lock();moveTaskToBack(true);
     }
     private void manualLock(){suppressAutomaticBiometric=true;lock();}
@@ -184,11 +186,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         TextView v=new TextView(this); v.setText(t); v.setTextSize(size); v.setTextColor(ink());
         v.setPadding(0,dp(size>=22?12:6),0,dp(size>=22?8:6));
         v.setLineSpacing(dp(4),1.15f);
-        if(size>=18){v.setTypeface(android.graphics.Typeface.create("serif",android.graphics.Typeface.NORMAL));v.setLetterSpacing(0.02f);} v.setSaveEnabled(false); p.addView(v);
+        if(size>=18)v.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+        if(size>=22&&android.os.Build.VERSION.SDK_INT>=28)v.setAccessibilityHeading(true);
+        v.setSaveEnabled(false); p.addView(v);
         themeUpdates.put(v,()->v.setTextColor(ink()));return v;
     }
     private GradientDrawable bg(int color) {
-        GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(12));
+        GradientDrawable d=new GradientDrawable(); d.setColor(color); d.setCornerRadius(dp(8));
         d.setStroke(dp(1),border()); return d;
     }
     private Button button(LinearLayout p, String label, Runnable action) {
@@ -203,6 +207,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         });
         b.setOnClickListener(v->{if(!busy||label.equals("锁定")){activeAction=b;try{action.run();}finally{activeAction=null;}}});return b;
     }
+    private Button quietButton(LinearLayout parent,String label,Runnable action){
+        Button b=button(parent,label,action);
+        b.setBackgroundColor(Color.TRANSPARENT);
+        b.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        themeUpdates.put(b,()->b.setTextColor(accent()));
+        themeUpdates.get(b).run();return b;
+    }
     private void selected(Button b,boolean yes){b.setSelected(yes);themeUpdates.get(b).run();}
     private void forgetTheme(View view){
         themeUpdates.remove(view);
@@ -216,7 +227,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private EditText field(LinearLayout p,String label,String value,boolean multiline,boolean secret) {
         text(p,label,14); EditText e=new EditText(this); e.setTextColor(ink()); e.setTextSize(16);
-        e.setPadding(dp(12),dp(10),dp(12),dp(10)); e.setBackground(bg(popover()));
+        e.setPadding(dp(12),dp(10),dp(12),dp(10)); e.setMinHeight(dp(48)); e.setBackground(bg(popover()));
         themeUpdates.put(e,()->{e.setTextColor(ink());GradientDrawable background=(GradientDrawable)e.getBackground();background.setColor(popover());background.setStroke(dp(1),border());});
         e.setSaveEnabled(false); e.setFreezesText(false); e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         e.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
@@ -243,7 +254,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         boolean[] numeric={!getPreferences(MODE_PRIVATE).getBoolean("characterKeyboard",false)};
         for(EditText e:fields)if(e!=null)e.setRawInputType(numeric[0]?InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD:InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         Button[] control=new Button[1];
-        control[0]=button(parent,numeric[0]?"使用字符键盘":"使用数字键盘",()->{
+        control[0]=quietButton(parent,numeric[0]?"使用字符键盘":"使用数字键盘",()->{
             numeric[0]=!numeric[0];
             getPreferences(MODE_PRIVATE).edit().putBoolean("characterKeyboard",!numeric[0]).apply();
             for(EditText e:fields)if(e!=null){
@@ -262,6 +273,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         public void onTextChanged(CharSequence s,int start,int before,int count){}
         public void afterTextChanged(Editable s){if(unlocked()&&!busy)action.run();}
     });}
+    private void hideKeyboard(){
+        View focus=getCurrentFocus();
+        if(focus!=null){((android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(focus.getWindowToken(),0);focus.clearFocus();}
+    }
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
     private void fail(Exception e){
         Diagnostics.Code code = e instanceof VaultCapacityException ? Diagnostics.Code.CAPACITY_LIMIT
@@ -281,6 +296,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void dialog(AlertDialog d) {
         dialogs.add(d); d.setOnDismissListener(x->{if(d.getWindow()!=null){wipe(d.getWindow().getDecorView());forgetTheme(d.getWindow().getDecorView());}dialogs.remove(d);scheduleStartupUpdate();});
         d.getWindow().setBackgroundDrawable(bg(paper())); d.show();
+    }
+    private ScrollView scrollableForm(LinearLayout form){
+        ScrollView scroll=new ScrollView(this);scroll.setSaveEnabled(false);
+        scroll.setFillViewport(true);scroll.addView(form);return scroll;
     }
     private android.content.Context dialogContext(){return new ContextThemeWrapper(this,dark?android.R.style.Theme_Material_Dialog_Alert:android.R.style.Theme_Material_Light_Dialog_Alert);}
     private void confirm(String title,String message,Runnable yes){
@@ -394,39 +413,43 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void showLocked() {
         cancelAutomaticUnlock();biometricAttempted=false;
-        base();scroll();text(page,"日 课",34);text(page,"静观 · 日有所记",16);
+        base();scroll();page.setPadding(dp(8),dp(32),dp(8),dp(24));text(page,"日课",30);
         boolean fresh=!store.exists(), restoring=fresh&&pendingAction==RESTORE&&pendingUri!=null, creating=fresh&&!restoring;
         if(!fresh&&device!=null&&device.enabled()&&!ignoreDeviceWrapper){
             text(page,"尚未设置主密码",19);
-            text(page,"记录仍在本机加密保存；使用这台手机的人可以直接进入。可在设置中添加主密码与恢复密钥，再启用指纹。",14);
+            text(page,"使用这台手机的人可直接进入。可在设置中添加密码。",14);
             button(page,"进入日课",this::openDeviceVault);
             if(foreground&&!suppressAutomaticBiometric)openDeviceVault();
             return;
         }
-        text(page,creating&&BuildConfig.DEBUG?"本机加密 · 不联网\n体验测试版，请先使用虚构记录。":"本机加密 · 不联网",13);
+        if(creating&&BuildConfig.DEBUG)text(page,"测试版，请使用虚构记录。",13);
         if(pendingUri!=null||pickerAction!=0)text(page,handoffLabel(pendingUri!=null?pendingAction:pickerAction),14);
         EditText pass=field(page,creating?"设置主密码":restoring?"备份导出时的主密码":"输入主密码","",false,true);
         EditText again=creating?field(page,"再次输入主密码","",false,true):null;
+        if(again!=null){
+            pass.setImeOptions(pass.getImeOptions()|EditorInfo.IME_ACTION_NEXT);
+            pass.setOnEditorActionListener((v,action,event)->{if(action!=EditorInfo.IME_ACTION_NEXT)return false;again.requestFocus();return true;});
+        }
         Button keyboard=passwordKeyboard(page,pass,again);
         if(creating){
-            text(page,"请牢记主密码",19);
-            text(page,"记录和备份都是密文。密码不会上传，没有服务器替你找回；忘记密码时，仅有备份文件仍无法解密。",14);
-            text(page,BuildConfig.DEBUG?"本测试版不提供恢复密钥；忘记主密码后，加密备份无法恢复。":"正式版下一步会提供离线恢复密钥，它也能解密。只有提前妥善保存该密钥，才可在忘记密码时恢复；密码与密钥都丢失则无法恢复。",14);
-            text(page,"指纹只帮助解锁这台手机，换机仍需要备份密码或对应恢复密钥。",14);
+
+            text(page,"密码无法找回，请妥善保存。",14);
+            text(page,BuildConfig.DEBUG?"测试版无恢复密钥，忘记密码将无法恢复。":"下一步保存恢复密钥。密码和密钥都丢失将无法恢复。",14);
+
             LinearLayout details=column();page.addView(details);details.setVisibility(View.GONE);
-            button(page,"了解密码与备份",()->details.setVisibility(details.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
-            text(details,"主密码不限制位数，但短密码容易被猜解，建议使用较长的随机口令。更换密码后，旧备份仍需要导出时的旧密码（或对应的恢复密钥）。",14);
+            quietButton(page,"了解密码与备份",()->details.setVisibility(details.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+            text(details,"建议使用长口令。旧备份仍需要导出时的旧密码或对应恢复密钥；换机不能使用指纹恢复。请定期导出并验证备份。",14);
         }
         CheckBox recovery=new CheckBox(this);recovery.setText("使用离线恢复密钥");recovery.setTextColor(ink());
         // Preview builds intentionally avoid recovery-key UI so phone testing stays quick.
         // Release builds keep the recovery path for real private data.
         if(!creating&&!BuildConfig.DEBUG){page.addView(recovery);recovery.setOnCheckedChangeListener((b,checked)->{if(checked){pass.setRawInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);keyboard.setVisibility(View.GONE);}else{pass.setRawInputType(passwordInputType(false));keyboard.setVisibility(View.VISIBLE);}});}
-        if(creating||restoring)selected(button(page,creating?"建立资料库":"恢复资料库",()->{
+        if(creating||restoring){Button proceed=button(page,creating?"建立资料库":"恢复资料库",()->{
             String value=pass.getText().toString();boolean recover=!BuildConfig.DEBUG&&recovery.isChecked();
-            if(creating&&!value.equals(again.getText().toString())){toast("两次密码不一致");return;}
+            if(creating&&!value.equals(again.getText().toString())){again.setError("两次密码不一致");again.requestFocus();return;}
             if(creating){try{VaultCrypto.requirePassword(value.toCharArray());}catch(Exception e){fail(e);return;}}
             pass.setText("");if(again!=null)again.setText("");setBusy(true);long ticket=generation;Uri uri=restoring?pendingUri:null;
-            text(page,"正在处理，请保持应用在前台……",14);
+            text(page,"处理中，请勿离开…",14);
             crypto.execute(()->{
                 VaultCrypto.Created made=null;VaultCrypto.Opened opened=null;JSONObject parsed=null;RecordIndex prepared=null;Exception error=null;char[] chars=value.toCharArray();
                 try{
@@ -462,15 +485,19 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                     }catch(Exception e){o.session.close();fail(e);lock();}
                 });
             });
-        }),true);
+        });selected(proceed,true);
+            EditText last=creating?again:pass;
+            last.setImeOptions(last.getImeOptions()|EditorInfo.IME_ACTION_DONE);
+            last.setOnEditorActionListener((v,action,event)->{if(action!=EditorInfo.IME_ACTION_DONE)return false;if(!busy)proceed.performClick();return true;});
+        }
         if(creating){
-            text(page,BuildConfig.DEBUG?"请牢记主密码，并定期导出和验证加密备份。":"请保管好主密码与离线恢复密钥，并定期验证加密备份。",14);
+
             button(page,"暂不设置密码，直接使用",this::createDeviceVault);
             button(page,"从加密备份恢复",()->pick(RESTORE));
         }
         if(restoring)button(page,"取消恢复",()->{pendingUri=null;pendingAction=0;showLocked();});
         if(!fresh){
-            unlockInput=pass;unlockRecovery=recovery;unlockStatus=text(page,"输入正确密码后会自动解锁，无需再点确认。",14);
+            unlockInput=pass;unlockRecovery=recovery;unlockStatus=text(page,"输入后自动解锁",14);
             pass.addTextChangedListener(new TextWatcher(){
                 public void beforeTextChanged(CharSequence t,int start,int count,int after){}
                 public void onTextChanged(CharSequence t,int start,int before,int count){}
@@ -480,7 +507,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 pass.setRawInputType(passwordInputType(checked));keyboard.setVisibility(checked?View.GONE:View.VISIBLE);queuePasswordProbe();
             });
             if(biometric.enabled()&&android.os.Build.VERSION.SDK_INT>=28){
-                text(page,suppressAutomaticBiometric?"已手动锁定。输入主密码，或主动开始指纹验证。":"已启用指纹：进入时自动验证，也可输入主密码。",14);
+                text(page,suppressAutomaticBiometric?"已锁定，可用密码或指纹解锁。":"正在验证指纹，也可输入密码。",14);
                 if(suppressAutomaticBiometric)button(page,"解锁",()->{suppressAutomaticBiometric=false;biometricAttempted=false;startAutomaticBiometric();});
                 biometricRetry=button(page,"重试指纹",()->{biometricAttempted=false;startAutomaticBiometric();});biometricRetry.setVisibility(View.GONE);
                 startAutomaticBiometric();
@@ -496,7 +523,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         passwordRevision++;
         if(passwordDebounce!=null)unlockHandler.removeCallbacks(passwordDebounce);
         if(unlockInput==null||!foreground||locking||unlocked())return;
-        if(unlockInput.length()==0){if(unlockStatus!=null)unlockStatus.setText("输入正确密码后会自动解锁，无需再点确认。");return;}
+        if(unlockInput.length()==0){if(unlockStatus!=null)unlockStatus.setText("输入后自动解锁");return;}
         passwordDebounce=()->{passwordDebounce=null;probePassword();};unlockHandler.postDelayed(passwordDebounce,550);
     }
     /** Single background probe at a time; changed input and lifecycle invalidate results. */
@@ -604,13 +631,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
         EditText pass=field(form,"设置主密码","",false,true),again=field(form,"再次输入主密码","",false,true);
         passwordKeyboard(form,pass,again);
-        text(form,"可以使用几个互不相关的汉语词汇拼音组成长口令。请牢记密码，并保管恢复密钥。",14);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("设置密码与恢复密钥").setView(form).setNegativeButton("暂不设置",(x,w)->cancelPasswordSetup()).setPositiveButton("下一步",null).create();
+        text(form,"建议使用长口令。请保管密码与恢复密钥。",14);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("设置密码与恢复密钥").setView(scrollableForm(form)).setNegativeButton("暂不设置",(x,w)->cancelPasswordSetup()).setPositiveButton("下一步",null).create();
         d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(busy)return;
             String value=pass.getText().toString();
-            if(!value.equals(again.getText().toString())){toast("两次密码不一致");return;}
+            if(!value.equals(again.getText().toString())){again.setError("两次密码不一致");again.requestFocus();return;}
             char[] chars=value.toCharArray();try{VaultCrypto.requirePassword(chars);}catch(Exception e){Arrays.fill(chars,'\0');fail(e);return;}
             long token=generation;VaultCrypto.Session owner=session;setBusy(true);pass.setText("");again.setText("");
             crypto.execute(()->{
@@ -634,18 +661,18 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void showProtectionRecovery(VaultCrypto.Created created,long token){
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
-        text(form,"将恢复密钥离线保存。它也能解密资料，不能发给别人。确认完成前，原有资料和进入方式保留。",14);
+        text(form,"离线保存，请勿分享。核对后才启用密码保护。",14);
         text(form,created.recoveryCode.replaceAll("(.{8})(?!$)","$1 "),18);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("1 / 2 · 保存恢复密钥").setView(form)
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("1 / 2 · 保存恢复密钥").setView(scrollableForm(form))
             .setNegativeButton("取消",(x,w)->cancelPasswordSetup()).setPositiveButton("已保存，继续核对",(x,w)->verifyProtectionRecovery(created,token)).create();
         d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
     }
     private void verifyProtectionRecovery(VaultCrypto.Created created,long token){
         if(token!=generation||pendingProtectionSession!=created.session||!unlocked())return;
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
-        text(form,"根据离线副本完整重输恢复密钥。完成后才启用密码保护。",14);
+        text(form,"重输已保存的密钥，核对后启用密码。",14);
         EditText verify=field(form,"完整重输恢复密钥","",true,true);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("2 / 2 · 核对恢复密钥").setView(form)
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("2 / 2 · 核对恢复密钥").setView(scrollableForm(form))
             .setNegativeButton("取消",(x,w)->cancelPasswordSetup()).setPositiveButton("启用密码保护",null).create();
         d.setOnCancelListener(x->cancelPasswordSetup());dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
@@ -671,13 +698,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void showRecovery(VaultCrypto.Created created){
         session=created.session;base();scroll();text(page,"1 / 2 · 离线保存恢复密钥",24);
-        text(page,"将它写在纸上，和手机分开保管。它能直接解密资料库，不能发给任何人。切到后台会取消尚未确认的建立。",15);
+        text(page,"抄写后与手机分开保管，请勿分享。离开应用将取消创建。",15);
         text(page,created.recoveryCode.replaceAll("(.{8})(?!$)","$1 "),18);
         button(page,"我已离线保存，继续核对",()->verifyRecovery(created));
     }
     private void verifyRecovery(VaultCrypto.Created created){
         base();scroll();text(page,"2 / 2 · 核对恢复密钥",24);
-        text(page,"请根据离线副本完整重输密钥。确认前还没有建立资料库。",15);
+        text(page,"重输已保存的密钥，核对后完成创建。",15);
         button(page,"返回查看密钥",()->showRecovery(created));
         EditText verify=field(page,"完整重输恢复密钥确认已保存","",true,true);
         button(page,"我已离线保存，建立资料库",()->{
@@ -728,7 +755,6 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(contentScroll!=null&&renderedRoute>=0)scrollOffsets[renderedRoute]=contentScroll.getScrollY();
         refreshPracticeOptions=null;
         base();LinearLayout top=row(root);top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView seal=text(top,"日",18);seal.setGravity(Gravity.CENTER);seal.setPadding(0,0,0,0);seal.setRotation(-2);GradientDrawable sealBackground=bg(popover());sealBackground.setCornerRadius(dp(5));sealBackground.setStroke(dp(1),accent());seal.setBackground(sealBackground);seal.setTextColor(accent());LinearLayout.LayoutParams sealParams=new LinearLayout.LayoutParams(dp(32),dp(32));sealParams.setMargins(0,0,dp(8),0);seal.setLayoutParams(sealParams);themeUpdates.put(seal,()->{sealBackground.setColor(popover());sealBackground.setStroke(dp(1),accent());seal.setTextColor(accent());});
         TextView title=text(top,"日课",18);title.setPadding(0,dp(4),0,dp(4));title.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));title.setGravity(Gravity.CENTER_VERTICAL);
         themeButton=headerIcon(top,dark?ZenIcon.SUN:ZenIcon.MOON,dark?"切换日间":"切换夜间",()->{dark=!dark;getPreferences(MODE_PRIVATE).edit().putBoolean("dark",dark).apply();applyTheme();});
         headerIcon(top,ZenIcon.LOCK,"锁定",this::manualLock);
@@ -736,8 +762,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         retryDraft=button(root,"重试草稿保存",()->{if(writer!=null){status("正在重试草稿保存…（尚未提交记录）");retryDraft.setVisibility(View.GONE);writer.flushSoon();}});retryDraft.setVisibility(draftFailed?View.VISIBLE:View.GONE);
         if(vaultBytes>=VaultCrypto.MAX_PLAINTEXT*0.8)text(root,capacityLabel(),12);
         String[] labels={"今日","记录","日记","数据","设置"};LinearLayout nav=row(root);
-        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->leaveManagement(()->{if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;journalEditing=false;maintenance=null;tab=index;showApp();}));b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,dp(48),1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab||(index==5&&tab>=4));}
-        scroll();
+        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->{if(index==tab)return;leaveManagement(()->{if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;maintenance=null;tab=index;showApp();});});b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab||(index==5&&tab>=4));}
+        // Keep the primary destinations in thumb reach, outside the scrolling form.
+        root.removeView(nav);scroll();root.addView(nav);
         renderedRoute=maintenance!=null?8:tab;
         try{switch(tab){case 0:today();break;case 1:history();break;case 2:journals();break;case 3:statistics();break;case 4:backups();break;case 5:settings();break;case 6:maintenancePage();break;}}
         catch(Exception e){fail(e);}
@@ -776,16 +803,13 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LinearLayout card=column();card.setPadding(dp(10),dp(6),dp(10),dp(6));card.setMinimumHeight(dp(64));GradientDrawable background=bg(surface());card.setBackground(background);
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(0,0,dp(8),dp(8));line.addView(card,lp);
         themeUpdates.put(card,()->{background.setColor(surface());background.setStroke(dp(1),border());});
-        for(TextView v:new TextView[]{text(card,label,11),text(card,value,19),text(card,detail,10)}){v.setPadding(0,0,0,0);v.setLineSpacing(0,1.05f);}
+        for(TextView v:new TextView[]{text(card,label,13),text(card,value,19),text(card,detail,12)}){v.setPadding(0,0,0,0);v.setLineSpacing(0,1.05f);if(v.length()==0)v.setVisibility(View.GONE);}
     }
     private void today()throws Exception {
         LocalDate day=todayDate();PracticeStats stats=index().stats;
-        TextView dayLabel=text(page,day.toString(),12);themeUpdates.put(dayLabel,()->dayLabel.setTextColor(accent()));dayLabel.setTextColor(accent());
-        dayLabel.setPadding(0,0,0,dp(2));TextView todayHeading=text(page,"今日功课",24);todayHeading.setPadding(0,0,0,dp(2));TextView motto=text(page,"不争一时之速，只记每日之功。",12);motto.setPadding(0,0,0,dp(6));
-        LinearLayout first=row(page);webStat(first,"今日时长",Records.decimal(stats.todayMinutes)+" 分钟",index().today.size()+" 次记录");webStat(first,"近 7 天",PracticeStats.formatMinutes(stats.weekMinutes),"含今天 · 平均每天 "+PracticeStats.formatMinutes(stats.weekAverageMinutes));
-        LinearLayout second=row(page);webStat(second,"累计时长",PracticeStats.formatMinutes(stats.totalMinutes),stats.totalCount+" 次练习 · 平均每天 "+PracticeStats.formatMinutes(stats.totalAverageMinutes));webStat(second,"连续打卡",stats.streak+" 天","今日或昨日仍可续上");
-        LinearLayout form=recordCard();form.setPadding(dp(12),dp(8),dp(12),dp(12));
-        TextView formTitle=text(form,"记一课",18);formTitle.setPadding(0,0,0,dp(2));TextView formHint=text(form,"选类型，定时长，立即落笔",12);formHint.setPadding(0,0,0,dp(4));
+        text(page,day.toString(),14);
+        text(page,"今日 "+Records.decimal(stats.todayMinutes)+" 分钟 · "+index().today.size()+" 次",24);
+        LinearLayout form=column();form.setPadding(0,dp(12),0,dp(16));page.addView(form);
         JSONObject d=draft("checkIn");String[] type={d.optString("typeId")},date={d.optString("date",day.toString())},dateMode={d.optString("dateMode",d.has("date")?"legacy":"today")};
         if("today".equals(dateMode[0]))date[0]=todayDate().toString();
         Integer[] preset={d.has("preset")?d.getInt("preset"):null};
@@ -804,14 +828,14 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         Button datePick=button(detailsArea,"练习日期 · "+date[0]+" ▾",()->chooseDay(date[0],indexMarks(false),"练习记录",chosen->{date[0]=chosen.toString();dateMode[0]="manual";try{JSONObject current=draft("checkIn");current.put("date",date[0]).put("dateMode","manual");saveDraft("checkIn",current);}catch(Exception e){fail(e);}showApp();}));
         datePick.setContentDescription("选择练习日期");
         TextView dateHint=text(detailsArea,"legacy".equals(dateMode[0])?"旧草稿日期："+date[0]+"。请选择继续补记，或改用今日。":"",12);dateHint.setVisibility("legacy".equals(dateMode[0])?View.VISIBLE:View.GONE);
-        EditText note=field(detailsArea,"打卡备注（可选）",Records.checkInNote(d),true,false);note.setHint("只属于这一次练习的简短备注");
+        EditText note=field(detailsArea,"打卡备注（可选）",Records.checkInNote(d),true,false);note.setHint("写备注");
         boolean[] adjusting={false};
         Runnable write=()->{try{JSONObject n=object("typeId",type[0],"manual",manual.getText().toString(),"date",date[0],"note",note.getText().toString(),"dateMode",dateMode[0]);if(preset[0]!=null)n.put("preset",preset[0]);saveDraft("checkIn",n);}catch(Exception e){fail(e);}};
         if("legacy".equals(dateMode[0]))button(detailsArea,"继续补记 "+date[0],()->{dateMode[0]="manual";write.run();dateHint.setVisibility(View.GONE);});
-        button(detailsArea,"改用今日",()->{dateMode[0]="today";date[0]=todayDate().toString();datePick.setText("练习日期 · "+date[0]+" ▾");write.run();dateHint.setVisibility(View.GONE);});
+        button(detailsArea,"改用今日",()->{dateMode[0]="today";date[0]=todayDate().toString();datePick.setText("练习日期 · "+date[0]+" ▾");write.run();dateHint.setVisibility(View.GONE);showApp();});
         OptionFlowLayout actions=new OptionFlowLayout(this);form.addView(actions,new LinearLayout.LayoutParams(-1,-2));
-        LinearLayout detailsBody=column();actions.addView(detailsBody);Button details=button(detailsBody,detailsOpen[0]?"⌃ 收起补充项":"⌄ 补记日期或添加备注",()->{detailsOpen[0]=!detailsOpen[0];detailsArea.setVisibility(detailsOpen[0]?View.VISIBLE:View.GONE);});compactOption(details);
-        details.setContentDescription("补记日期或添加备注");details.setOnClickListener(v->{if(busy)return;detailsOpen[0]=!detailsOpen[0];details.setText(detailsOpen[0]?"⌃ 收起补充项":"⌄ 补记日期或添加备注");detailsArea.setVisibility(detailsOpen[0]?View.VISIBLE:View.GONE);});
+        LinearLayout detailsBody=column();actions.addView(detailsBody);Button details=quietButton(detailsBody,detailsOpen[0]?"收起":"日期 / 备注",()->{detailsOpen[0]=!detailsOpen[0];detailsArea.setVisibility(detailsOpen[0]?View.VISIBLE:View.GONE);});compactOption(details);
+        details.setContentDescription("补记日期或添加备注");details.setOnClickListener(v->{if(busy)return;detailsOpen[0]=!detailsOpen[0];details.setText(detailsOpen[0]?"收起":"日期 / 备注");detailsArea.setVisibility(detailsOpen[0]?View.VISIBLE:View.GONE);});
         List<Button> typeDeletes=new ArrayList<>(),durationDeletes=new ArrayList<>();
         Runnable showEditing=()->{for(Button x:typeDeletes)x.setVisibility("practiceType".equals(managedEntity)?View.VISIBLE:View.GONE);for(Button x:durationDeletes)x.setVisibility("durationPreset".equals(managedEntity)?View.VISIBLE:View.GONE);typeDone.setVisibility("practiceType".equals(managedEntity)?View.VISIBLE:View.GONE);durationDone.setVisibility("durationPreset".equals(managedEntity)?View.VISIBLE:View.GONE);};
         refreshPracticeOptions=()->{
@@ -838,7 +862,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                     b.setOnLongClickListener(v->{if(!busy&&unlocked()){managedEntity="practiceType";showEditing.run();saved("点击练习设置倍率，按住拖动排序");if(touch[0]==0&&touch[1]==0){int[] xy=new int[2];b.getLocationOnScreen(xy);touch[0]=xy[0]+b.getWidth()/2f;touch[1]=xy[1]+b.getHeight()/2f;}typeArea.beginDrag(card,touch[0],touch[1]);b.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}return true;});
                     x.setOnLongClickListener(v->b.performLongClick());
                 }
-                FrameLayout add=optionCard(typeArea);LinearLayout addBody=column();add.addView(addBody,new FrameLayout.LayoutParams(-2,-2));Button plus=button(addBody,"＋",()->editOption("practiceType",null));compactOption(plus);plus.setContentDescription("添加练习类型");
+                FrameLayout add=optionCard(typeArea);LinearLayout addBody=column();add.addView(addBody,new FrameLayout.LayoutParams(-2,-2));Button plus=button(addBody,types.isEmpty()?"添加练习":"＋",()->editOption("practiceType",null));compactOption(plus);plus.setContentDescription("添加练习类型");
                 for(JSONObject option:Records.options(data,"durationPreset")){
                     int m=option.getInt("minutes");if(values.contains(m))continue;values.add(m);FrameLayout card=optionCard(presetArea);LinearLayout body=column();card.addView(body,new FrameLayout.LayoutParams(-2,-2));
                     Button b=button(body,m+" 分钟",()->{if(managedEntity!=null)return;preset[0]=Objects.equals(preset[0],m)?null:m;adjusting[0]=true;manual.setText("");adjusting[0]=false;for(int j=0;j<presets.size();j++)selected(presets.get(j),Objects.equals(values.get(j),preset[0]));write.run();});
@@ -852,23 +876,28 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         };
         refreshPracticeOptions.run();
         watch(manual,()->{if(adjusting[0])return;preset[0]=null;for(Button b:presets)selected(b,false);write.run();});watch(note,write);
-        LinearLayout submitBody=column();actions.addView(submitBody);
-        Button submit=button(submitBody,"✓ 完成打卡",()->{
+        LinearLayout submitBody=column();form.addView(submitBody,new LinearLayout.LayoutParams(-1,-2));
+        Button submit=button(submitBody,"today".equals(dateMode[0])?"打卡":"补记 · "+date[0],()->{
             try{
                 JSONObject t=Records.find(data,"practiceType",type[0]);
-                if(t==null){heading.setError("请选择一种练习类型");saved("请先选择一种练习类型。");return;}
+                if(t==null){saved("先添加练习类型");editOption("practiceType",null);return;}
                 int minutes;
                 try{minutes=preset[0]!=null?preset[0]:Records.minutes(manual.getText().toString());}
                 catch(IllegalArgumentException e){manual.setError("请输入 1–1440 的整数分钟。");manual.requestFocus();return;}
                 if("legacy".equals(dateMode[0])){saved("请先确认旧草稿日期：继续补记，或改用今日。");return;}
                 if("today".equals(dateMode[0]))date[0]=todayDate().toString();
                 try{Records.date(date[0]);}catch(IllegalArgumentException e){saved("请通过补记日期重新选择有效日期。");return;}
-                if(note.length()>50000){note.setError("备注最多 50000 个字符。");return;}
+                if(note.length()>50000){detailsArea.setVisibility(View.VISIBLE);detailsOpen[0]=true;details.setText("收起");note.setError("备注最多 50000 个字符。");note.requestFocus();return;}
                 JSONObject r=object("id",Records.id(),"practiceTypeId",type[0],"practiceTypeName",t.getString("name"),"practiceDate",date[0],"note",note.getText().toString()).put("durationMinutes",minutes).put("durationMultiplier",Records.multiplier(t));
                 String savedDay=date[0];
-                changeAsync(n->{r.put("createdAt",Records.now());Records.upsert(n,"checkIn",r);n.getJSONObject("drafts").remove("checkIn");},()->{managedEntity=null;saved(savedDay.equals(todayDate().toString())?"今日一课，已记下":"练习已补记 · "+savedDay);scrollOffsets[0]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);showApp();});
+                changeAsync(n->{r.put("createdAt",Records.now());Records.upsert(n,"checkIn",r);n.getJSONObject("drafts").remove("checkIn");},()->{managedEntity=null;hideKeyboard();saved(savedDay.equals(todayDate().toString())?"已打卡":"练习已补记 · "+savedDay);scrollOffsets[0]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);showApp();});
             }catch(Exception e){fail(e);}
-        });compactOption(submit);submit.setMinWidth(dp(128));submit.setContentDescription("保存练习");selected(submit,true);
+        });submit.setMinHeight(dp(52));submit.setContentDescription("保存练习");selected(submit,true);
+        manual.setImeOptions(manual.getImeOptions()|EditorInfo.IME_ACTION_DONE);
+        manual.setOnEditorActionListener((v,action,event)->{
+            if(action!=EditorInfo.IME_ACTION_DONE)return false;
+            if(!busy&&unlocked()&&managedEntity==null)submit.performClick();return true;
+        });
     }
 
     private void openManagement(String entity){
@@ -878,7 +907,14 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(busy)return;managedEntity=null;typeOrder.clear();orderDirty=false;after.run();
     }
     private void statistics()throws Exception{
-        text(page,"数据",28);PracticeStats stats=index().stats;text(page,"练习统计",20);text(page,"近 7 天 "+Records.decimal(stats.weekMinutes)+" 分钟 · 连续 "+stats.streak+" 天\n累计 "+Records.decimal(stats.totalMinutes)+" 分钟 · "+stats.totalCount+" 次",16);heatmaps(stats.minutesByDate);
+        text(page,"数据",24);PracticeStats stats=index().stats;
+        LinearLayout first=row(page);
+        webStat(first,"今日",PracticeStats.formatMinutes(stats.todayMinutes),index().today.size()+" 次");
+        webStat(first,"近 7 天",PracticeStats.formatMinutes(stats.weekMinutes),"日均 "+PracticeStats.formatMinutes(stats.weekAverageMinutes));
+        LinearLayout second=row(page);
+        webStat(second,"累计",PracticeStats.formatMinutes(stats.totalMinutes),stats.totalCount+" 次 · 日均 "+PracticeStats.formatMinutes(stats.totalAverageMinutes));
+        webStat(second,"连续",stats.streak+" 天","");
+        heatmaps(stats.minutesByDate);
     }
     private void heatmaps(Map<String,? extends Number> minutes){
         text(page,"练习热力图",23);
@@ -889,11 +925,11 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         periodSummary(monthly);heatmapGrid(monthly,7,true);
         LinearLayout annual=row(page);text(annual,"全年",20);Button year=button(annual,heatmapYear+" 年 ▾",this::chooseHeatmapYear);year.setContentDescription("选择统计年份");
         List<PracticeHeatmap.Day> yearly=PracticeHeatmap.year(heatmapYear,minutes);periodSummary(yearly);heatmapGrid(yearly,19,false);
-        text(page,"黄色越浓，折算后的有效练习时长越长。",13);
+
         int[] colors=new int[240];for(int i=0;i<colors.length;i++)colors[i]=PracticeHeatmap.color(i+1,dark);
         View legend=new View(this);legend.setBackground(new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,colors));legend.setContentDescription("连续黄色色阶：15、30、60、120、240 分钟；240 分钟及以上为最浓黄色");
         page.addView(legend,new LinearLayout.LayoutParams(-1,dp(16)));
-        text(page,"参考：15 · 30 · 60 · 120 · 240 分钟\n灰色为 0 分钟；1–240 分钟连续渐变，240 分钟以上保持最浓黄色。",13);
+        text(page,"有效时长：0 → 240+ 分钟",13);
     }
     private void periodSummary(List<PracticeHeatmap.Day> days){
         double sum=0;int active=0;for(PracticeHeatmap.Day d:days){sum+=d.minutes;if(d.minutes>0)active++;}
@@ -909,7 +945,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void chooseHeatmapYear(){
         if(!unlocked()||busy)return;
         long token=generation;LinearLayout form=column();NumberPicker picker=yearPicker(form,heatmapYear);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("选择年份").setView(form).setNegativeButton("取消",null).setPositiveButton("确定",null).create();dialog(d);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("选择年份").setView(scrollableForm(form)).setNegativeButton("取消",null).setPositiveButton("确定",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{if(!unlocked()||busy||token!=generation)return;picker.clearFocus();heatmapYear=picker.getValue();d.dismiss();showApp();});
     }
     private void heatmapGrid(List<PracticeHeatmap.Day> days,int columns,boolean calendar){
@@ -923,7 +959,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void info(String title,String message){AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(title).setMessage(message).setPositiveButton("关闭",null).create();dialog(d);}
     private String preview(String text){return text.length()>600?text.substring(0,600)+"…":text;}
     private List<JSONObject> sorted(String array,String date)throws Exception{return array.equals("journals")?index().journalRows:index().history;}
-    private void remove(String entity,String id){confirm("移到已删除？","可在设置 → 维护 → 已删除中恢复。完整加密备份仍保留这些内容。",()->changeAsync(d->Records.delete(d,entity,id),()->{saved("记录已移到已删除，可恢复。");showApp();}));}
+    private void remove(String entity,String id){confirm("移到已删除？","可在设置 → 维护中恢复，备份仍保留此内容。",()->changeAsync(d->Records.delete(d,entity,id),()->{saved("记录已移到已删除，可恢复。");showApp();}));}
     private void dateFilter(boolean journal){
         String chosen=journal?journalFilter:historyDate;text(page,chosen==null?"最近 7 天 · 含今天":chosen,14);
         LinearLayout controls=row(page);button(controls,"选择日期",()->dateCalendar(journal));if(chosen!=null)button(controls,"最近 7 天",()->{if(journal){journalFilter=null;journalPage=0;}else{historyDate=null;historyPage=0;}showApp();});
@@ -960,7 +996,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         LinearLayout form=column();form.setPadding(dp(12),dp(8),dp(12),dp(12));
         ScrollView s=new ScrollView(this);s.setSaveEnabled(false);s.addView(form);
         LinearLayout calendar=column();form.addView(calendar);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("选择日期 · 有"+marker+"的日子着色").setView(s).setNegativeButton("关闭",null).create();
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("选择日期").setView(s).setNegativeButton("关闭",null).create();
         Runnable[] render=new Runnable[1];
         render[0]=()->{
             forgetTheme(calendar);calendar.removeAllViews();LinearLayout controls=row(calendar);
@@ -992,17 +1028,17 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         }catch(Exception e){toast("复制失败，请重试");}
     }
     private void history()throws Exception{
-        text(page,"练习记录",22);text(page,"按日期归拢，每日时长一目了然。",13);dateFilter(false);
+        text(page,"练习记录",24);dateFilter(false);
         RecordIndex idx=index();List<JSONObject> rows=historyDate==null?idx.recentChecks:idx.checksByDay.getOrDefault(historyDate,Collections.emptyList());
         LinkedHashMap<String,List<JSONObject>> groups=new LinkedHashMap<>();for(JSONObject r:rows)groups.computeIfAbsent(r.optString("practiceDate"),k->new ArrayList<>()).add(r);
         List<String> days=new ArrayList<>(groups.keySet());historyPage=Math.min(historyPage,Math.max(0,(days.size()-1)/PAGE_SIZE));
         for(String day:days.subList(historyPage*PAGE_SIZE,Math.min((historyPage+1)*PAGE_SIZE,days.size()))){
             List<JSONObject> entries=groups.get(day);LinearLayout card=recordCard();LinearLayout title=row(card);title.setGravity(Gravity.CENTER_VERTICAL);
             TextView date=text(title,day,18);date.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
-            Button export=button(title,"导出",()->copyDailySummary(entries));
-            export.setLayoutParams(new LinearLayout.LayoutParams(-2,-2));export.setContentDescription("导出 "+day+" 的练习记录");
+            Button export=button(title,"复制汇总",()->copyDailySummary(entries));
+            export.setLayoutParams(new LinearLayout.LayoutParams(-2,-2));export.setContentDescription("复制 "+day+" 的练习记录");
             long subtotal=0;for(JSONObject r:entries)subtotal+=Records.effectiveHundredths(r);
-            text(card,"小计 "+PracticeStats.formatMinutes(subtotal/100.0),14);text(card,entries.size()+" 次练习",12);
+            text(card,PracticeStats.formatMinutes(subtotal/100.0)+" · "+entries.size()+" 次",14);
             for(JSONObject r:entries){
                 LinearLayout line=row(card);line.setGravity(Gravity.CENTER_VERTICAL);LinearLayout body=column();line.addView(body,new LinearLayout.LayoutParams(0,-2,1));text(body,r.optString("practiceTypeName"),16);
                 if(Records.find(data,"practiceType",r.optString("practiceTypeId"))==null)text(body,"历史类型",11);
@@ -1029,7 +1065,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void journals()throws Exception{
         if(!journalEditing)journalDate=todayDate().toString();
-        text(page,"练习感悟",22);text(page,"日记独立于打卡备注，同一天反复保存即更新原文。",13);
+        text(page,"日记",24);
         journalEditor();
         text(page,"历史日记",20);dateFilter(true);
         List<String> unfinished=writer().journalDraftDays();if(!unfinished.isEmpty())button(page,"未完成草稿 "+unfinished.size(),this::showJournalDrafts);
@@ -1045,17 +1081,18 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(rows.size()>PAGE_SIZE)pageControls(rows.size(),journalPage,n->{journalPage=n;showApp();});
     }
     private void journalEditor()throws Exception{
-        LinearLayout editor=recordCard();text(editor,journalDate.equals(todayDate().toString())?"写下今日所得":"记录这一天的所得",20);
+        LinearLayout editor=column();page.addView(editor);
         JSONObject current=Records.journal(data,journalDate);String key="journal:"+journalDate;JSONObject d=draft(key);
         Button date=button(editor,journalDate+" ▾",()->chooseDay(journalDate,indexMarks(true),"感悟",chosen->openJournal(chosen.toString())));date.setContentDescription("选择感悟日期");
+        if(!journalDate.equals(todayDate().toString()))quietButton(editor,"回到今天",()->openJournal(todayDate().toString()));
         Button discard=button(editor,"放弃未提交修改",()->discardJournalDraft(journalDate));discard.setVisibility(writer().journalDraftDays().contains(journalDate)?View.VISIBLE:View.GONE);
-        EditText content=field(editor,"正文",d.has("content")?d.getString("content"):current==null?"":current.getString("content"),true,false);content.setMinHeight(dp(200));content.setHint("练习时身体有何感受？心境有何变化？如实写下即可……");
-        text(editor,"草稿自动暂存本机，点击保存后成为正式记录。",12);
-        Button save=button(editor,current==null?"保存此页":"更新此页",()->{
+        EditText content=field(editor,"正文",d.has("content")?d.getString("content"):current==null?"":current.getString("content"),true,false);content.setMinHeight(dp(200));content.setHint(journalDate.equals(todayDate().toString())?"写下今天的感悟":"写下这一天的感悟");
+        text(editor,"保存后记入日记",12);
+        Button save=button(editor,current==null?"保存":"更新",()->{
             try{
                 if(content.getText().toString().trim().isEmpty()||content.length()>50000){content.setError("请填写正文，最多 50000 个字符。");content.requestFocus();return;}
                 JSONObject r=current==null?object("id",Records.id()):Records.copy(current);String savedDay=journalDate;r.put("journalDate",savedDay).put("content",content.getText().toString());
-                changeAsync(n->{if(current==null)r.put("createdAt",Records.now());r.put("updatedAt",Records.now());Records.upsert(n,"journal",r);n.getJSONObject("drafts").remove(key);},()->{journalPage=0;scrollOffsets[2]=0;scrollOffsets[7]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);saved("感悟已保存 · "+savedDay);showApp();});
+                changeAsync(n->{if(current==null)r.put("createdAt",Records.now());r.put("updatedAt",Records.now());Records.upsert(n,"journal",r);n.getJSONObject("drafts").remove(key);},()->{journalPage=0;scrollOffsets[2]=0;scrollOffsets[7]=0;if(contentScroll!=null)contentScroll.scrollTo(0,0);hideKeyboard();saved("感悟已保存 · "+savedDay);showApp();});
             }catch(Exception e){fail(e);}
         });save.setContentDescription("保存感悟");selected(save,true);save.setEnabled(!content.getText().toString().trim().isEmpty());
         watch(content,()->{try{saveDraft(key,object("content",content.getText().toString()));discard.setVisibility(View.VISIBLE);save.setEnabled(!content.getText().toString().trim().isEmpty());}catch(Exception e){fail(e);}});
@@ -1081,7 +1118,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         try{
             JSONObject edited=Records.copy(old);String[] selectedDay={old.getString("practiceDate")};
             LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
-            text(form,"首次打卡时间保持不变。原类型已删除时，仍可保留历史名称。",13);
+
             Button[] typeButton=new Button[1];typeButton[0]=button(form,old.optString("practiceTypeName"),()->{
                 try{
                     List<JSONObject> options=Records.options(data,"practiceType");String[] names=new String[options.size()+1];names[0]="保留原类型 · "+old.optString("practiceTypeName");for(int i=0;i<options.size();i++)names[i+1]=options.get(i).optString("name");
@@ -1092,7 +1129,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                 }catch(Exception e){fail(e);}
             });
             Button[] dateButton=new Button[1];dateButton[0]=button(form,"练习日期 · "+selectedDay[0],()->chooseDay(selectedDay[0],indexMarks(false),"练习记录",day->{selectedDay[0]=day.toString();dateButton[0].setText("练习日期 · "+selectedDay[0]);}));
-            text(form,"输入原始总时长；保留原类型时沿用记录倍率 ×"+Records.decimal(Records.multiplier(old))+"，换类型使用新类型倍率。",13);
+            text(form,"当前倍率 ×"+Records.decimal(Records.multiplier(old))+"；换类型后按新倍率计算。",13);
             EditText minutes=field(form,"时长（分钟）",old.optString("durationMinutes"),false,false);minutes.setInputType(InputType.TYPE_CLASS_NUMBER);
             EditText note=field(form,"备注（可选）",Records.checkInNote(old),true,false);
             ScrollView scroll=new ScrollView(this);scroll.setSaveEnabled(false);scroll.addView(form);
@@ -1106,7 +1143,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
                         ||!note.getText().toString().equals(Records.checkInNote(old));
                     if(changed){
                         AlertDialog confirmation=new AlertDialog.Builder(dialogContext()).setTitle("放弃练习修改？")
-                            .setMessage("尚未保存的修改将丢失，原练习记录保持不变。")
+                            .setMessage("未保存的修改将丢失。")
                             .setNegativeButton("继续编辑",null).setPositiveButton("放弃修改",(x,w)->super.cancel()).create();
                         dialog(confirmation);
                     }
@@ -1137,8 +1174,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         EditText value=field(form,type?"练习类型名称":"常用分钟数",old==null?"":type?old.optString("name"):old.optString("minutes"),false,false);
         if(!type)value.setInputType(InputType.TYPE_CLASS_NUMBER);
         EditText rate=type?field(form,"练习倍率",old==null?"1":Records.decimal(Records.multiplier(old)),false,false):null;
-        if(type){rate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);text(form,"有效时长 = 输入总时长 × 倍率。默认 1，支持 0.01–10，最多两位小数；仅影响之后的打卡。",13);}
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(old==null?"新增":"修改").setView(form).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog(d);
+        if(type){rate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);text(form,"时长 × 倍率。范围 0.01–10，仅影响新打卡。",13);}
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(old==null?"新增":"修改").setView(scrollableForm(form)).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(busy||!unlocked())return;
             try{
@@ -1168,24 +1205,22 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         text(page,"设置",24);
         text(page,"解锁方式",19);
         if(deviceMode){
-            text(page,"尚未设置主密码。记录在本机加密保存，使用这台手机的人可以直接进入。",14);
+            text(page,"未设置密码，使用这台手机的人可直接进入。",14);
             button(page,"设置密码与恢复密钥",this::setUpPassword);
             Button fingerprint=button(page,"启用指纹解锁",()->authenticateBiometric(true));fingerprint.setEnabled(false);
-            text(page,"完成主密码和恢复密钥设置后，才可启用指纹及导出加密备份。",14);
+            text(page,"设置密码后可启用指纹、导出备份。",14);
         }else{
         button(page,biometric.enabled()?"重新设置指纹解锁":"启用指纹解锁",()->authenticateBiometric(true));
         if(biometric.enabled())button(page,"停用指纹解锁",()->{
             background(()->{biometric.disable();return true;},ok->{toast("已停用，之后使用主密码解锁");showApp();},Diagnostics.Code.BIOMETRIC_UNAVAILABLE);
         });
-        text(page,"系统中已登记的强生物识别可解锁。新增指纹后需重新启用；请保留主密码。",14);
+        text(page,"新增指纹后需重新启用。请保留主密码。",14);
         button(page,"更换主密码",this::changePassword);
         }
-        text(page,"记录只保存在本机，不遥测、不接入 AI；没有密码找回服务。每次打开后自动检查更新，也可手动检查；仅连接 GitHub 获取公开版本信息，不上传记录。\n系统截图、自动备份和应用最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。",14);
-        text(page,"备份",19);
-        text(page,"导出、验证与恢复加密备份，以及旧网页资料迁移。",14);
+        quietButton(page,"隐私说明",()->info("隐私说明","记录只保存在本机，不遥测、不接入 AI；没有密码找回服务。每次打开后自动检查更新，也可手动检查；仅连接 GitHub 获取公开版本信息，不上传记录。\n允许截图与主动复制练习汇总；系统自动备份和最近任务预览已关闭。\n手机系统或输入法被攻破时，本应用无法保证隐私。"));
+
         Button backups=button(page,"备份与导出",()->{backupOrigin=5;tab=4;showApp();});backups.setContentDescription("备份");
-        text(page,"维护",19);
-        text(page,"恢复已删除内容、查看操作历史、版本更新与本地诊断。",14);
+
         button(page,"维护",()->{maintenance=null;tab=6;showApp();});
     }
     private void showDiagnostics(){
@@ -1256,10 +1291,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         passwordKeyboard(form,p,again);
         text(form,"短密码容易被猜解，建议使用较长的随机口令。",14);
         text(form,BuildConfig.DEBUG?"旧备份仍使用旧密码。":"恢复密钥不变。旧备份仍使用旧密码。",14);
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("更换主密码").setView(form).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog(d);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle("更换主密码").setView(scrollableForm(form)).setNegativeButton("取消",null).setPositiveButton("保存",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(busy)return;
-            String password=p.getText().toString();if(!password.equals(again.getText().toString())){toast("两次密码不一致");return;}
+            String password=p.getText().toString();if(!password.equals(again.getText().toString())){again.setError("两次密码不一致");again.requestFocus();return;}
             try{VaultCrypto.requirePassword(password.toCharArray());}catch(Exception e){fail(e);return;}
             long ticket=generation;VaultCrypto.Session original=session;setBusy(true);p.setText("");again.setText("");
             crypto.execute(()->{
@@ -1299,9 +1334,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         return "请解锁继续使用。";
     }
     private void backups()throws Exception{
-        button(page,"返回设置",()->{tab=5;showApp();});
-        text(page,"加密备份",22);text(page,Records.summary(data),14);text(page,capacityLabel(),13);
-        text(page,"选择本机目录或离线 U 盘。导出后，请验证文件确实可解密。",14);
+        quietButton(page,"返回设置",()->{tab=5;showApp();});
+        text(page,"加密备份",22);text(page,Records.summary(data),14);button(page,"备份内容",()->info("备份内容",Records.summary(data)+"\n"+capacityLabel()+"\n包含设置、记录、日记、草稿、已删除内容及旧归档。"));
+        text(page,"导出后请验证备份可用。",14);
         if(backupOutcome!=null)text(page,backupOutcome,16);
         if(lastExportUri!=null)selected(button(page,"验证这份备份",()->readBackup(lastExportUri,true)),true);
         button(page,"导出加密备份",()->pick(EXPORT));
@@ -1312,11 +1347,11 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             catch(Exception e){fail(e);return;}
             confirm("导入旧网页数据","旧 JSON 本身是明文。导入只在本机完成；验证加密备份可恢复后，再处理旧明文副本。",()->pick(IMPORT));
         });
-        text(page,"备份包含练习设置、记录、感悟、草稿及可恢复的已删除内容。旧梦境保留但不显示。",13);
+
     }
     private void maintenancePage()throws Exception{
         if(maintenance!=null){maintenanceDetails();return;}
-        button(page,"返回设置",()->{tab=5;showApp();});
+        quietButton(page,"返回设置",()->{tab=5;showApp();});
         text(page,"维护",22);
         button(page,"已删除",()->{maintenance="deleted";scrollOffsets[8]=0;showApp();});
         button(page,"操作历史",()->{maintenance="audit";scrollOffsets[8]=0;showApp();});
@@ -1333,9 +1368,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         switch(entity){case "practiceType":return r.optString("name");case "durationPreset":return r.optInt("minutes")+" 分钟";case "checkIn":return r.optString("practiceDate")+" · "+r.optString("practiceTypeName")+" · "+Records.durationLabel(r);case "journal":return r.optString("journalDate")+" 感悟";default:return "归档资料";}
     }
     private void maintenanceDetails()throws Exception{
-        button(page,"返回维护",()->{maintenance=null;showApp();});
+        quietButton(page,"返回维护",()->{maintenance=null;showApp();});
         if(maintenance.equals("deleted")){
-            text(page,"已删除",22);text(page,"这些内容仍保存在加密资料库和完整备份中，可以恢复。",13);
+            text(page,"已删除",22);text(page,"可恢复，仍包含在备份中。",13);
             List<JSONObject> deleted=index().deletedRows;deletedPage=Math.min(deletedPage,Math.max(0,(deleted.size()-1)/PAGE_SIZE));
             for(JSONObject t:deleted.subList(deletedPage*PAGE_SIZE,Math.min((deletedPage+1)*PAGE_SIZE,deleted.size()))){
                 JSONObject r=t.getJSONObject("record");String entity=t.getString("entity"),id=r.getString("id");LinearLayout card=recordCard();
@@ -1345,7 +1380,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             if(deleted.isEmpty())text(page,"没有已删除内容。",14);
             if(deleted.size()>PAGE_SIZE)pageControls(deleted.size(),deletedPage,n->{deletedPage=n;showApp();});
         }else if(maintenance.equals("audit")){
-            text(page,"操作历史",22);text(page,"本机加密历史 · 最近 50 条",13);JSONArray log=data.getJSONArray("auditLog");
+            text(page,"操作历史",22);text(page,"最近 50 条",13);JSONArray log=data.getJSONArray("auditLog");
             for(int i=log.length()-1,shown=0;i>=0&&shown<50;i--){JSONObject a=log.getJSONObject(i);if("dream".equals(a.optString("entity")))continue;shown++;text(page,RecordTime.label(new JSONObject().put("createdAt",a.opt("occurredAt")))+" · "+actionLabel(a.optString("action"))+" · "+entityLabel(a.optString("entity")),14);}
         }else{
             text(page,"版本与更新",22);text(page,"当前版本：日课 "+BuildConfig.VERSION_NAME,16);
@@ -1354,8 +1389,8 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             button(page,updateRequest==null?"检查更新":"正在检查…",this::checkForUpdates).setEnabled(updateRequest==null);
             if(latestRelease!=null)button(page,"查看 v"+latestRelease.version+" 更新",()->openUpdatePage(latestRelease.pageUrl));
             else button(page,"前往 GitHub 发布页",()->openUpdatePage(UpdateChecker.LATEST_PAGE));
-            text(page,"每次打开并解锁后自动检查一次 GitHub 正式版本，也可手动检查。不上传记录，不自动下载或安装；跳过的版本仍可手动查看。",14);
-            text(page,"更新时直接覆盖安装，保留本机记录。建议提前导出并验证备份。",14);
+            text(page,"打开时检查更新，不上传记录。安装需手动确认。",14);
+            text(page,"更新前请备份，直接覆盖安装。",14);
         }
     }
     private boolean openUpdatePage(String url){
@@ -1395,7 +1430,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(updateRequest==null&&startupUpdates.beginAutomaticCheck())checkForUpdates(false);
         boolean otherDialog=false;for(AlertDialog d:dialogs)if(d.isShowing()){otherDialog=true;break;}
         View focus=getCurrentFocus();
-        boolean editing=managedEntity!=null||journalEditing||tab==4||pendingUri!=null||pendingProtectionSession!=null||freshRestoreSession!=null||focus instanceof EditText;
+        boolean editing=managedEntity!=null||(tab==2&&journalEditing)||tab==4||pendingUri!=null||pendingProtectionSession!=null||freshRestoreSession!=null||focus instanceof EditText;
         UpdateChecker.Release release=startupUpdates.takePrompt(foreground,unlocked(),busy,editing,otherDialog);
         if(release!=null)showUpdatePrompt(release);
     };
@@ -1510,10 +1545,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void readBackup(Uri uri,boolean verifyOnly){
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
-        text(form,"输入这份文件导出时的主密码。它可能与当前手机的主密码不同；指纹不能替代备份解密。",14);
+        text(form,"请输入导出时的密码，指纹不可用于解密备份。",14);
         EditText pass=field(form,"此备份的主密码","",false,true);Button keyboard=passwordKeyboard(form,pass);CheckBox recovery=new CheckBox(this);recovery.setText("使用恢复密钥");
         if(!BuildConfig.DEBUG){form.addView(recovery);recovery.setOnCheckedChangeListener((b,checked)->{pass.setRawInputType(passwordInputType(checked));keyboard.setVisibility(checked?View.GONE:View.VISIBLE);});}
-        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(verifyOnly?"验证备份":"读取备份").setView(form).setNegativeButton("取消",null).setPositiveButton(verifyOnly?"验证备份":"读取备份",null).create();dialog(d);
+        AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(verifyOnly?"验证备份":"读取备份").setView(scrollableForm(form)).setNegativeButton("取消",null).setPositiveButton(verifyOnly?"验证备份":"读取备份",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(busy)return;
             String password=pass.getText().toString();boolean useRecovery=!BuildConfig.DEBUG&&recovery.isChecked();pass.setText("");activeAction=d.getButton(AlertDialog.BUTTON_POSITIVE);setBusy(true);activeAction=null;d.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);long ticket=generation;

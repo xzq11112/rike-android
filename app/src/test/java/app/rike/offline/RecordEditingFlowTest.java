@@ -80,7 +80,7 @@ public class RecordEditingFlowTest {
         try{
             JSONObject data=data();String day=LocalDate.now().minusDays(10).toString();data.getJSONObject("drafts").put("checkIn",new JSONObject().put("typeId","type").put("manual","25").put("date",day).put("dateMode","manual"));
             open(a,data);click(a.getWindow().getDecorView(),"保存练习");TestWork.drain(a);assertNotNull(TestWork.named(a.getWindow().getDecorView(),"练习已补记 · "+day));
-            TestWork.navigate(a,2);set(a,"journalDate",day);set(a,"journalEditing",true);call(a,"showApp");assertNull(TestWork.named(a.getWindow().getDecorView(),"写下今日所得"));assertNotNull(TestWork.named(a.getWindow().getDecorView(),"记录这一天的所得"));
+            TestWork.navigate(a,2);set(a,"journalDate",day);set(a,"journalEditing",true);call(a,"showApp");assertNull(TestWork.named(a.getWindow().getDecorView(),"写下今日所得"));assertNotNull(TestWork.named(a.getWindow().getDecorView(),"回到今天"));
         }finally{c.pause().stop().destroy();}
     }
 }
