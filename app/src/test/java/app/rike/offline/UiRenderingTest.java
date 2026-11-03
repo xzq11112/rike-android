@@ -59,11 +59,12 @@ public class UiRenderingTest {
             TestWork.navigate(a,2);EditText content=TestWork.views(a.getWindow().getDecorView(),EditText.class).get(0);
             content.setText("示例日记：今天练习了三十分钟。\n慢慢记录，不急着下结论。");TestWork.flush(a);capture(a,"05-journal-draft");
             TestWork.named(a.getWindow().getDecorView(),"保存感悟").performClick();TestWork.drain(a);capture(a,"06-journal-saved");
-            TestWork.navigate(a,3);capture(a,"07-statistics");
+            TestWork.navigate(a,3);assertNull(TestWork.get(a,"feedback"));capture(a,"07-statistics");
             TestWork.navigate(a,5);capture(a,"08-settings");
             TestWork.navigate(a,4);capture(a,"09-backups");
             TestWork.navigate(a,0);TestWork.named(a.getWindow().getDecorView(),"切换夜间").performClick();capture(a,"10-today-dark");
             TestWork.named(a.getWindow().getDecorView(),"锁定").performClick();capture(a,"11-unlock-dark");
+            if(!BuildConfig.DEBUG)assertNotNull(TestWork.views(a.getWindow().getDecorView(),android.widget.CheckBox.class).get(0).getButtonTintList());
         }finally{c.pause().stop().destroy();}
     }
 }

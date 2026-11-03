@@ -99,6 +99,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private int surface() { return Color.parseColor(dark ? "#211F1B" : "#FAF7EF"); }
     private int popover() { return Color.parseColor(dark ? "#27231E" : "#FFFDF8"); }
     private int border() { return Color.parseColor(dark ? "#464037" : "#D8D0C2"); }
+    private int hintInk() { return Color.parseColor(dark ? "#B6AEA3" : "#766E64"); }
     private int accent() { return Color.parseColor(dark ? "#D16B5E" : "#A13D32"); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(null); // Never restore framework plaintext form state.
@@ -118,6 +119,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     @Override public void onBackPressed() {
         if(session==null){moveTaskToBack(true);return;}
         if(busy&&(managedEntity!=null||tab!=0||historyFromStats)){status("正在保存，请稍候；也可以使用右上角锁定。");return;}
+        if(!draftFailed)feedback=null;
         if(managedEntity!=null){leaveManagement(this::showApp);return;}
 
         if(tab==6&&maintenance!=null){maintenance=null;showApp();return;}
@@ -226,9 +228,9 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         if(themeButton!=null)themeButton.setContentDescription(dark?"切换日间":"切换夜间");
     }
     private EditText field(LinearLayout p,String label,String value,boolean multiline,boolean secret) {
-        text(p,label,14); EditText e=new EditText(this); e.setTextColor(ink()); e.setTextSize(16);
+        text(p,label,14); EditText e=new EditText(this); e.setTextColor(ink()); e.setHintTextColor(hintInk()); e.setTextSize(16);
         e.setPadding(dp(12),dp(10),dp(12),dp(10)); e.setMinHeight(dp(48)); e.setBackground(bg(popover()));
-        themeUpdates.put(e,()->{e.setTextColor(ink());GradientDrawable background=(GradientDrawable)e.getBackground();background.setColor(popover());background.setStroke(dp(1),border());});
+        themeUpdates.put(e,()->{e.setTextColor(ink());e.setHintTextColor(hintInk());GradientDrawable background=(GradientDrawable)e.getBackground();background.setColor(popover());background.setStroke(dp(1),border());});
         e.setSaveEnabled(false); e.setFreezesText(false); e.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         e.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         e.setInputType(secret?InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD:
@@ -248,6 +250,10 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             public void onDestroyActionMode(ActionMode m){}
         });
         p.addView(e,new LinearLayout.LayoutParams(-1,-2)); return e;
+    }
+    private void styleCheckBox(CheckBox box){
+        Runnable update=()->{box.setTextColor(ink());box.setButtonTintList(android.content.res.ColorStateList.valueOf(accent()));};
+        themeUpdates.put(box,update);update.run();box.setMinHeight(dp(48));
     }
     private Button passwordKeyboard(LinearLayout parent,EditText... fields) {
         for(EditText e:fields)if(e!=null)e.setRawInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
@@ -440,7 +446,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
             quietButton(page,"了解密码与备份",()->details.setVisibility(details.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
             text(details,"建议使用长口令。旧备份仍需要导出时的旧密码或对应恢复密钥；换机不能使用指纹恢复。请定期导出并验证备份。",14);
         }
-        CheckBox recovery=new CheckBox(this);recovery.setText("使用离线恢复密钥");recovery.setTextColor(ink());
+        CheckBox recovery=new CheckBox(this);recovery.setText("使用离线恢复密钥");styleCheckBox(recovery);
         // Preview builds intentionally avoid recovery-key UI so phone testing stays quick.
         // Release builds keep the recovery path for real private data.
         if(!creating&&!BuildConfig.DEBUG){page.addView(recovery);recovery.setOnCheckedChangeListener((b,checked)->{if(checked){pass.setRawInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);keyboard.setVisibility(View.GONE);}else{pass.setRawInputType(passwordInputType(false));keyboard.setVisibility(View.VISIBLE);}});}
@@ -762,7 +768,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         retryDraft=button(root,"重试草稿保存",()->{if(writer!=null){status("正在重试草稿保存…（尚未提交记录）");retryDraft.setVisibility(View.GONE);writer.flushSoon();}});retryDraft.setVisibility(draftFailed?View.VISIBLE:View.GONE);
         if(vaultBytes>=VaultCrypto.MAX_PLAINTEXT*0.8)text(root,capacityLabel(),12);
         String[] labels={"今日","记录","日记","数据","设置"};LinearLayout nav=row(root);
-        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->{if(index==tab)return;leaveManagement(()->{if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;maintenance=null;tab=index;showApp();});});b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab||(index==5&&tab>=4));}
+        for(int i=0;i<labels.length;i++){final int index=i==4?5:i;Button b=button(nav,labels[i],()->{if(index==tab)return;leaveManagement(()->{if(!draftFailed)feedback=null;if(index==5&&tab<4)settingsOrigin=tab;historyFromStats=false;maintenance=null;tab=index;showApp();});});b.setTextSize(14);b.setPadding(dp(4),dp(4),dp(4),dp(4));b.setMinimumHeight(dp(48));b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));GradientDrawable fill=new GradientDrawable();fill.setColor(Color.TRANSPARENT);GradientDrawable underline=new GradientDrawable();android.graphics.drawable.LayerDrawable navigation=new android.graphics.drawable.LayerDrawable(new android.graphics.drawable.Drawable[]{fill,underline});navigation.setLayerHeight(1,dp(2));navigation.setLayerGravity(1,Gravity.BOTTOM);b.setBackground(navigation);themeUpdates.put(b,()->{b.setTextColor(b.isSelected()?accent():ink());underline.setColor(b.isSelected()?accent():Color.TRANSPARENT);});selected(b,index==tab||(index==5&&tab>=4));}
         // Keep the primary destinations in thumb reach, outside the scrolling form.
         root.removeView(nav);scroll();root.addView(nav);
         renderedRoute=maintenance!=null?8:tab;
@@ -1335,7 +1341,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void backups()throws Exception{
         quietButton(page,"返回设置",()->{tab=5;showApp();});
-        String summary=Records.summary(data);text(page,"加密备份",22);text(page,summary,14);button(page,"备份内容",()->info("备份内容",summary+"\n"+capacityLabel()+"\n包含设置、记录、日记、草稿、已删除内容及旧归档。"));
+        String summary=Records.summary(data);text(page,"加密备份",22);quietButton(page,"备份内容",()->info("备份内容",summary+"\n"+capacityLabel()+"\n包含设置、记录、日记、草稿、已删除内容及旧归档。"));
         text(page,"导出后请验证备份可用。",14);
         if(backupOutcome!=null)text(page,backupOutcome,16);
         if(lastExportUri!=null)selected(button(page,"验证这份备份",()->readBackup(lastExportUri,true)),true);
@@ -1546,7 +1552,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void readBackup(Uri uri,boolean verifyOnly){
         LinearLayout form=column();form.setPadding(dp(18),dp(10),dp(18),dp(10));
         text(form,"请输入导出时的密码，指纹不可用于解密备份。",14);
-        EditText pass=field(form,"此备份的主密码","",false,true);Button keyboard=passwordKeyboard(form,pass);CheckBox recovery=new CheckBox(this);recovery.setText("使用恢复密钥");
+        EditText pass=field(form,"此备份的主密码","",false,true);Button keyboard=passwordKeyboard(form,pass);CheckBox recovery=new CheckBox(this);recovery.setText("使用恢复密钥");styleCheckBox(recovery);
         if(!BuildConfig.DEBUG){form.addView(recovery);recovery.setOnCheckedChangeListener((b,checked)->{pass.setRawInputType(passwordInputType(checked));keyboard.setVisibility(checked?View.GONE:View.VISIBLE);});}
         AlertDialog d=new AlertDialog.Builder(dialogContext()).setTitle(verifyOnly?"验证备份":"读取备份").setView(scrollableForm(form)).setNegativeButton("取消",null).setPositiveButton(verifyOnly?"验证备份":"读取备份",null).create();dialog(d);
         d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
