@@ -12,6 +12,7 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
+            systemProperty 'rike.screenshots', file("$buildDir/reports/ui").absolutePath
             systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
             ['https.proxyHost','https.proxyPort','http.proxyHost','http.proxyPort'].each { key ->
                 if (System.getProperty(key)) systemProperty key, System.getProperty(key)

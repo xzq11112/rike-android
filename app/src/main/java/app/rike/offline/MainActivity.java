@@ -312,7 +312,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     private void setBusy(boolean waiting){
         busy=waiting;
         if(waiting){
-            if(waitingAction==null&&activeAction!=null){waitingAction=activeAction;waitingLabel=activeAction.getText();String label=waitingLabel.toString();activeAction.setText(label.contains("保存")||label.contains("完成")?"保存中…":label.contains("验证")?"验证中…":label.contains("读取")?"读取中…":label.contains("恢复")?"恢复中…":"处理中…");}
+            if(waitingAction==null&&activeAction!=null){waitingAction=activeAction;waitingLabel=activeAction.getText();String label=waitingLabel.toString()+" "+String.valueOf(activeAction.getContentDescription());activeAction.setText(label.contains("保存")||label.contains("完成")?"保存中…":label.contains("验证")?"验证中…":label.contains("读取")?"读取中…":label.contains("恢复")?"恢复中…":"处理中…");}
             gateControls(root);
             for(AlertDialog d:dialogs)if(d.isShowing()&&d.getWindow()!=null)gateControls(d.getWindow().getDecorView());
         }else{
@@ -1576,4 +1576,3 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         });
     }
 }
-

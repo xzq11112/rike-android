@@ -35,7 +35,7 @@ public class PracticeMultiplierFlowTest {
             ((EditText)TestWork.named(a.getWindow().getDecorView(),"任意分钟数")).setText("60");TestWork.named(a.getWindow().getDecorView(),"保存练习").performClick();TestWork.drain(a);
             JSONObject saved=((JSONObject)TestWork.get(a,"data")).getJSONArray("checkIns").getJSONObject(0);
             assertEquals(60,saved.getInt("durationMinutes"));assertEquals(0.7,Records.multiplier(saved),0.000001);assertEquals(4200,Records.effectiveHundredths(saved));
-            assertNotNull(TestWork.named(a.getWindow().getDecorView(),"42 分钟"));
+            assertNotNull(TestWork.named(a.getWindow().getDecorView(),"今日 42 分钟 · 1 次"));
             VaultCrypto.Opened disk=VaultCrypto.open(new VaultStore(a).read(),"synthetic-multiplier-password".toCharArray());
             try{JSONObject stored=new JSONObject(new String(disk.plaintext,StandardCharsets.UTF_8));assertEquals(4200,Records.effectiveHundredths(stored.getJSONArray("checkIns").getJSONObject(0)));}finally{java.util.Arrays.fill(disk.plaintext,(byte)0);disk.session.close();}
         } finally {c.pause().stop().destroy();}
