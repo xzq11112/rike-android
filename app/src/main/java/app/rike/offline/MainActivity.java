@@ -1335,7 +1335,7 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
     }
     private void backups()throws Exception{
         quietButton(page,"返回设置",()->{tab=5;showApp();});
-        text(page,"加密备份",22);text(page,Records.summary(data),14);button(page,"备份内容",()->info("备份内容",Records.summary(data)+"\n"+capacityLabel()+"\n包含设置、记录、日记、草稿、已删除内容及旧归档。"));
+        String summary=Records.summary(data);text(page,"加密备份",22);text(page,summary,14);button(page,"备份内容",()->info("备份内容",summary+"\n"+capacityLabel()+"\n包含设置、记录、日记、草稿、已删除内容及旧归档。"));
         text(page,"导出后请验证备份可用。",14);
         if(backupOutcome!=null)text(page,backupOutcome,16);
         if(lastExportUri!=null)selected(button(page,"验证这份备份",()->readBackup(lastExportUri,true)),true);
@@ -1576,3 +1576,4 @@ public final class MainActivity extends Activity implements VaultAccess.Owner {
         });
     }
 }
+
