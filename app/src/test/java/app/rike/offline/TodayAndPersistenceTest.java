@@ -33,6 +33,10 @@ public class TodayAndPersistenceTest {
     private static Button button(View v,String label){if(v instanceof Button&&(label.contentEquals(((Button)v).getText())||label.contentEquals(v.getContentDescription()==null?"":v.getContentDescription())))return (Button)v;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++){Button b=button(((ViewGroup)v).getChildAt(i),label);if(b!=null)return b;}return null;}
     private static int buttons(View v,String label){int n=v instanceof Button&&(label.contentEquals(((Button)v).getText())||label.contentEquals(v.getContentDescription()==null?"":v.getContentDescription()))?1:0;if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)n+=buttons(((ViewGroup)v).getChildAt(i),label);return n;}
     private static String text(View v){StringBuilder b=new StringBuilder();if(v instanceof TextView)b.append(((TextView)v).getText()).append('\n');if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)b.append(text(((ViewGroup)v).getChildAt(i)));return b.toString();}
+    private static String statText(MainActivity a,String label){
+        View heading=TestWork.named(a.getWindow().getDecorView(),label);assertNotNull(label,heading);
+        return text((View)heading.getParent());
+    }
     private static class FailingStore extends VaultStore {
         boolean failWrites;
         FailingStore(MainActivity a){super(a);}
@@ -58,14 +62,14 @@ public class TodayAndPersistenceTest {
         Records.upsert(d,"checkIn",check("yesterday",now.minusDays(1),15,"SYNTHETIC-YESTERDAY"));
         FailingStore store=open(a,d);String screen=text(a.getWindow().getDecorView());
         assertTrue(screen.contains("50 分钟"));assertFalse(screen.contains("今日已记"));assertFalse(screen.contains("SYNTHETIC-TODAY"));TestWork.navigate(a,1);assertTrue(text(a.getWindow().getDecorView()).contains("SYNTHETIC-TODAY"));TestWork.navigate(a,0);
-        TestWork.navigate(a,3);screen=text(a.getWindow().getDecorView());assertTrue(screen.contains("累计 65 分钟 · 3 次"));assertTrue(screen.contains("连续 2 天"));
+        TestWork.navigate(a,3);screen=text(a.getWindow().getDecorView());assertTrue(statText(a,"累计").contains("1小时5分钟"));assertTrue(statText(a,"累计").contains("3 次"));assertTrue(statText(a,"连续").contains("2 天"));
         TestWork.navigate(a,1);screen=text(a.getWindow().getDecorView());
         assertTrue(screen.contains("SYNTHETIC-TODAY-ONE"));assertTrue(screen.contains("SYNTHETIC-TODAY-TWO"));assertTrue(screen.contains("SYNTHETIC-YESTERDAY"));
         byte[] before=store.read();TestWork.deleteFirst(a);
         assertArrayEquals(before,store.read());
         ShadowAlertDialog.getLatestAlertDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick();Shadows.shadowOf(Looper.getMainLooper()).idle();TestWork.drain(a);
         screen=text(a.getWindow().getDecorView());assertTrue(screen.contains("SYNTHETIC-TODAY-ONE"));assertFalse(screen.contains("SYNTHETIC-TODAY-TWO"));
-        TestWork.navigate(a,3);screen=text(a.getWindow().getDecorView());assertTrue(screen.contains("累计 35 分钟 · 2 次"));TestWork.navigate(a,0);assertTrue(text(a.getWindow().getDecorView()).contains("20 分钟"));
+        TestWork.navigate(a,3);screen=text(a.getWindow().getDecorView());assertTrue(statText(a,"累计").contains("35分钟"));assertTrue(statText(a,"累计").contains("2 次"));TestWork.navigate(a,0);assertTrue(text(a.getWindow().getDecorView()).contains("20 分钟"));
         JSONObject saved=(JSONObject)get(a,"data");assertEquals("two",saved.getJSONArray("deletedRecords").getJSONObject(0).getJSONObject("record").getString("id"));
         assertEquals(4,saved.getJSONArray("auditLog").length());
         VaultCrypto.Opened reopened=VaultCrypto.open(store.read(),PASSWORD);

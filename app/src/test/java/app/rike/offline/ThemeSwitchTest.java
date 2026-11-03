@@ -51,7 +51,7 @@ public class ThemeSwitchTest {
         int ink=input.getCurrentTextColor();byte[] disk=store.read();
         TestWork.named(root,"切换夜间").performClick();
         assertSame(root,get(a,"root"));assertEquals(before,tree(root));assertEquals(position,scroll.getScrollY());assertTrue(input.hasFocus());assertEquals(1,input.getSelectionStart());assertEquals("17",input.getText().toString());
-        assertTrue(root.getBackground() instanceof PaperBackground);assertEquals(0xffeee8de,input.getCurrentTextColor());assertNotEquals(ink,input.getCurrentTextColor());
+        assertTrue(root.getBackground() instanceof PaperBackground);assertEquals(0xffeee8de,input.getCurrentTextColor());assertEquals(0xffb6aea3,input.getCurrentHintTextColor());assertNotEquals(ink,input.getCurrentTextColor());
         assertTrue(button(root,"SYNTHETIC-TYPE").isSelected());assertNotNull(TestWork.named(root,"切换日间"));assertEquals(themeCount,((Map<?,?>)get(a,"themeUpdates")).size());assertEquals(writes,store.writes);assertArrayEquals(disk,store.read());
         TestWork.named(root,"切换日间").performClick();assertEquals(before,tree(root));assertEquals(ink,input.getCurrentTextColor());assertEquals(position,scroll.getScrollY());
         TestWork.navigate(a,3);View stats=(View)get(a,"root");List<View> grids=tree(stats);List<HeatmapView> maps=TestWork.views(stats,HeatmapView.class);assertEquals(2,maps.size());int[] original={maps.get(0).cellColor(0),maps.get(1).cellColor(0)};int priorWrites=store.writes;

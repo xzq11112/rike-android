@@ -3,7 +3,7 @@ android {
     namespace 'app.rike.offline'
     compileSdk 35
     buildFeatures { buildConfig true }
-    defaultConfig { applicationId 'app.rike.offline'; minSdk 26; targetSdk 35; versionCode 22; versionName '0.6.9'; resValue 'string', 'app_name', '日课' }
+    defaultConfig { applicationId 'app.rike.offline'; minSdk 26; targetSdk 35; versionCode 23; versionName '0.7.0'; resValue 'string', 'app_name', '日课' }
     buildTypes {
         debug { applicationIdSuffix '.preview.audit'; versionNameSuffix '-test'; resValue 'string', 'app_name', '日课 · 审查测试' }
         release { minifyEnabled false }
@@ -12,6 +12,7 @@ android {
     testOptions {
         unitTests.includeAndroidResources = true
         unitTests.all {
+            systemProperty 'rike.screenshots', file("$buildDir/reports/ui").absolutePath
             systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2'
             ['https.proxyHost','https.proxyPort','http.proxyHost','http.proxyPort'].each { key ->
                 if (System.getProperty(key)) systemProperty key, System.getProperty(key)

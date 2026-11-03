@@ -33,6 +33,23 @@ public class SectionLayoutTest {
         assertTrue(TestWork.named(a.getWindow().getDecorView(),"切换夜间") instanceof ImageButton);assertTrue(TestWork.named(a.getWindow().getDecorView(),"锁定") instanceof ImageButton);
         TestWork.navigate(a,3);assertNotNull(grid(a.getWindow().getDecorView()));assertTrue(text(a.getWindow().getDecorView()).contains("全年"));assertFalse(grid(a.getWindow().getDecorView()).isClickable());TestWork.navigate(a,5);String settings=text(a.getWindow().getDecorView());assertFalse(settings.contains("练习类型"));assertFalse(settings.contains("常用时长"));assertTrue(settings.contains("更换主密码"));assertTrue(settings.contains("备份"));assertFalse(settings.contains("版本与更新"));assertNull(TestWork.named(a.getWindow().getDecorView(),"导出加密备份"));click(a,"锁定");assertNull(TestWork.get(a,"data"));c.pause().stop().destroy();
     }
+    @Test public void minimalLayoutKeepsNavigationSubmissionAndPrivacyReachable()throws Exception{
+        ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();
+        MainActivity a=TestWork.offline(c.get());open(a,Records.empty());
+        LinearLayout root=(LinearLayout)TestWork.get(a,"root");
+        View nav=(View)TestWork.named(root,"今日").getParent();
+        assertSame(nav,root.getChildAt(root.getChildCount()-1));
+        assertTrue(root.indexOfChild((View)TestWork.get(a,"contentScroll"))<root.indexOfChild(nav));
+        String home=text(root);assertFalse(home.contains("不争一时"));assertFalse(home.contains("累计时长"));
+        View save=TestWork.named(root,"保存练习");assertNotNull(save);assertTrue(save.isEnabled());
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT,save.getLayoutParams().width);
+        click(a,"补记日期或添加备注");assertTrue(TestWork.named(root,"选择练习日期").isShown());
+        click(a,"补记日期或添加备注");assertFalse(TestWork.named(root,"选择练习日期").isShown());
+        TestWork.navigate(a,5);assertFalse(text(a.getWindow().getDecorView()).contains("不遥测"));
+        click(a,"隐私说明");AlertDialog privacy=ShadowAlertDialog.getLatestAlertDialog();
+        assertTrue(privacy.isShowing());assertTrue(text(privacy.getWindow().getDecorView()).contains("不上传记录"));
+        privacy.dismiss();c.pause().stop().destroy();
+    }
     @Test public void inlineDragAndCornerDeletionKeepHistoricalNamesAndMinutes()throws Exception{
         ActivityController<MainActivity> c=Robolectric.buildActivity(MainActivity.class).setup();MainActivity a=TestWork.offline(c.get());JSONObject d=Records.empty();
         Records.upsert(d,"practiceType",new JSONObject().put("id","Alpha").put("name","Alpha"));Records.upsert(d,"practiceType",new JSONObject().put("id","Beta").put("name","Beta"));d.getJSONArray("checkIns").put(check("past",LocalDate.now(),"SYNTHETIC"));

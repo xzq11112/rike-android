@@ -47,6 +47,7 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
           path: |
+            app/build/reports/ui/
             app/build/reports/tests/
             app/build/test-results/
             app/build/reports/lint-results-release.html

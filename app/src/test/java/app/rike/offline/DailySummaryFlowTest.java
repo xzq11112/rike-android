@@ -30,8 +30,8 @@ public class DailySummaryFlowTest {
             set(a,"session",keys.session);set(a,"data",data);set(a,"tab",1);set(a,"historyDate","2026-10-29");
             Method show=MainActivity.class.getDeclaredMethod("showApp");show.setAccessible(true);show.invoke(a);TestWork.layout(a);
             View root=a.getWindow().getDecorView();
-            assertNotNull(TestWork.named(root,"小计 1小时42分钟"));
-            View export=TestWork.named(root,"导出 2026-10-29 的练习记录");assertNotNull(export);export.performClick();
+            assertNotNull(TestWork.named(root,"1小时42分钟 · 3 次"));
+            View export=TestWork.named(root,"复制 2026-10-29 的练习记录");assertNotNull(export);export.performClick();
             ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);
             assertEquals("静坐 1小时\n阴性写作 42分钟",clipboard.getPrimaryClip().getItemAt(0).getText().toString());
             controller.pause();

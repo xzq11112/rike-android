@@ -1,3 +1,7 @@
+# 0.7.0 UI / UX 验证（2026-11-03）
+
+本机主 Java 源码编译和 48 项非界面测试通过。发布候选还需 GitHub Actions 的 Debug/Release 全套测试、Release lint、APK 构建和 Windows 合成签名检查；以对应提交的流水线结果为准。新增回归覆盖导航、草稿日期保留、键盘提交及返回链路。真机指纹、输入法、视觉与覆盖安装尚未验收。
+
 # 0.6.8 / versionCode 21 — 验证（2026-10-15）
 
 GitHub Actions [38661745689](https://github.com/xzq11112/rike-android/actions/runs/38661745689) 通过。APK 应用源码提交为 `9ba6d7edb1254f692b58d6bfeedb31ed83626ed5`，受测合并检出为 `80e1454908244c287d26891d6c075de86b790406`；之后只固定签名输入摘要并补验证说明，未修改应用及测试代码。
